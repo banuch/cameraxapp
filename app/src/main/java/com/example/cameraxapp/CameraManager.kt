@@ -1,8 +1,13 @@
-
 package com.example.cameraxapp
 
 import android.content.ContentValues
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.ImageFormat
+import android.graphics.Rect
+import android.graphics.RectF
+import android.graphics.YuvImage
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -14,6 +19,7 @@ import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.core.ZoomState
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -21,7 +27,10 @@ import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FileOutputStream
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlin.math.roundToInt
@@ -52,7 +61,7 @@ class CameraManager(
 
     // Interface for camera operation callbacks
     interface CameraListener {
-        fun onPhotoTaken(savedUri: Uri?, timestamp: String)
+        fun onPhotoTaken(savedUri: Uri?, timestamp: String, meterReading: String? = null)
         fun onCameraError(message: String)
     }
 
@@ -268,6 +277,160 @@ class CameraManager(
                 }
             }
         )
+    }
+
+    /**
+     * Processes the captured image from ROI and runs meter detection
+     *
+     * @param imageProxy Image from camera frame
+     * @param roiRect Region of interest rectangle (in preview coordinates)
+     * @param timestamp Timestamp for the filename
+     */
+    fun processRoiAndDetectMeter(imageProxy: ImageProxy, roiRect: RectF, timestamp: String) {
+        Log.d(tag, "Processing ROI and detecting meter")
+
+        try {
+            // Convert ImageProxy to Bitmap
+            val bitmap = imageProxyToBitmap(imageProxy)
+
+            // Convert ROI rect from view coordinates to bitmap coordinates
+            val viewFinderWidth = viewFinder.width.toFloat()
+            val viewFinderHeight = viewFinder.height.toFloat()
+
+            val bitmapWidth = bitmap.width.toFloat()
+            val bitmapHeight = bitmap.height.toFloat()
+
+            val scaleX = bitmapWidth / viewFinderWidth
+            val scaleY = bitmapHeight / viewFinderHeight
+
+            val bitmapRoiLeft = (roiRect.left * scaleX).toInt().coerceIn(0, bitmap.width - 1)
+            val bitmapRoiTop = (roiRect.top * scaleY).toInt().coerceIn(0, bitmap.height - 1)
+            val bitmapRoiRight = (roiRect.right * scaleX).toInt().coerceIn(0, bitmap.width)
+            val bitmapRoiBottom = (roiRect.bottom * scaleY).toInt().coerceIn(0, bitmap.height)
+
+            val roiWidth = bitmapRoiRight - bitmapRoiLeft
+            val roiHeight = bitmapRoiBottom - bitmapRoiTop
+
+            // Crop the ROI from the original bitmap
+            val croppedBitmap = Bitmap.createBitmap(
+                bitmap,
+                bitmapRoiLeft,
+                bitmapRoiTop,
+                roiWidth,
+                roiHeight
+            )
+
+            // Create detector and run detection
+            val meterDetector = MeterDetector(activity)
+            val (detections, resultBitmap) = meterDetector.detectMeterReading(croppedBitmap)
+
+            // Extract meter reading
+            val meterReading = if (detections.isNotEmpty()) {
+                meterDetector.extractMeterReading(detections)
+            } else {
+                null
+            }
+
+            // Save the processed bitmap
+            val savedUri = saveProcessedBitmap(resultBitmap, timestamp)
+
+            // Notify listener
+            if (savedUri != null) {
+                listener.onPhotoTaken(savedUri, timestamp, meterReading)
+            } else {
+                listener.onCameraError("Failed to save processed image")
+            }
+
+            // Clean up
+            meterDetector.close()
+            bitmap.recycle()
+            croppedBitmap.recycle()
+
+        } catch (e: Exception) {
+            Log.e(tag, "Error processing ROI and detecting meter: ${e.message}", e)
+            listener.onCameraError("Error processing image: ${e.message}")
+        }
+    }
+
+    /**
+     * Convert ImageProxy to Bitmap
+     */
+    private fun imageProxyToBitmap(imageProxy: ImageProxy): Bitmap {
+        val yBuffer = imageProxy.planes[0].buffer
+        val uBuffer = imageProxy.planes[1].buffer
+        val vBuffer = imageProxy.planes[2].buffer
+
+        val ySize = yBuffer.remaining()
+        val uSize = uBuffer.remaining()
+        val vSize = vBuffer.remaining()
+
+        val nv21 = ByteArray(ySize + uSize + vSize)
+
+        yBuffer.get(nv21, 0, ySize)
+        vBuffer.get(nv21, ySize, vSize)
+        uBuffer.get(nv21, ySize + vSize, uSize)
+
+        val yuvImage = YuvImage(nv21, ImageFormat.NV21, imageProxy.width, imageProxy.height, null)
+        val out = ByteArrayOutputStream()
+        yuvImage.compressToJpeg(Rect(0, 0, imageProxy.width, imageProxy.height), 100, out)
+        val imageBytes = out.toByteArray()
+
+        return BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+    }
+
+    /**
+     * Saves a processed bitmap to storage
+     *
+     * @param bitmap Bitmap to save
+     * @param timestamp Timestamp for the filename
+     * @return URI of the saved image or null if failed
+     */
+    /**
+     * Saves a processed bitmap to storage
+     *
+     * @param bitmap Bitmap to save
+     * @param timestamp Timestamp for the filename
+     * @return URI of the saved image or null if failed
+     */
+    private fun saveProcessedBitmap(bitmap: Bitmap, timestamp: String): Uri? {
+        val photoFileName = "PHOTO_ROI_${timestamp}.jpg"
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                // For Android 10 and above
+                val contentValues = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, photoFileName)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+                    put(
+                        MediaStore.MediaColumns.RELATIVE_PATH,
+                        Environment.DIRECTORY_PICTURES + File.separator + APP_FOLDER_NAME
+                    )
+                }
+
+                val contentUri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                val imageUri = activity.contentResolver.insert(contentUri, contentValues)
+
+                imageUri?.let { uri ->
+                    activity.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                        bitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream)
+                    }
+                    return uri
+                }
+            } else {
+                // For below Android 10
+                val photoFile = File(outputDirectory, photoFileName)
+                FileOutputStream(photoFile).use { outputStream ->
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream)
+                }
+
+                // Create URI from file
+                return Uri.fromFile(photoFile)
+            }
+        } catch (e: Exception) {
+            Log.e(tag, "Error saving processed bitmap: ${e.message}", e)
+        }
+
+        return null
     }
 
     /**

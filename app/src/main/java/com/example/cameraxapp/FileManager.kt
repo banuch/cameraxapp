@@ -1,6 +1,3 @@
-/**
- * FileManager.kt
- */
 package com.example.cameraxapp
 
 import android.content.ContentValues
@@ -31,8 +28,9 @@ class FileManager(private val context: Context) {
      *
      * @param imageUri URI of the captured image
      * @param timestamp Formatted timestamp string
+     * @param meterReading Optional meter reading detected from the image
      */
-    fun saveJsonMetadata(imageUri: Uri, timestamp: String) {
+    fun saveJsonMetadata(imageUri: Uri, timestamp: String, meterReading: String? = null) {
         Log.d(tag, "Saving JSON metadata for image: $imageUri")
 
         try {
@@ -47,6 +45,9 @@ class FileManager(private val context: Context) {
                 put("timestamp", formattedTimestamp)
                 put("createdAt", currentTimeMillis)
                 put("filename", imageUri.lastPathSegment)
+                if (meterReading != null) {
+                    put("meterReading", meterReading)
+                }
             }
 
             val jsonString = jsonObject.toString()

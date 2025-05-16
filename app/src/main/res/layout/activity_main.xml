@@ -19,9 +19,8 @@
     </androidx.camera.view.PreviewView>
 
     <!-- ROI overlay - for drawing the region of interest -->
-    <com.example.cameraxapp.RoiOverlayView
+    <com.example.cameraxapp.ROIOverlay
         android:id="@+id/roiOverlay"
-
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         app:layout_constraintBottom_toBottomOf="parent"
@@ -29,7 +28,18 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-
+    <!-- Progress indicator for processing -->
+    <ProgressBar
+        android:id="@+id/progressIndicator"
+        android:layout_width="60dp"
+        android:layout_height="60dp"
+        android:visibility="gone"
+        android:background="@drawable/progress_background"
+        android:padding="10dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
 
     <!-- Camera controls bar at the bottom -->
     <androidx.constraintlayout.widget.ConstraintLayout
@@ -47,9 +57,7 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="16dp"
             android:layout_marginEnd="16dp"
-
             android:layout_marginBottom="16dp"
-
             android:max="100"
             android:progress="0"
             android:progressDrawable="@drawable/seekbar_progress"
@@ -79,8 +87,6 @@
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent" />
 
-
-
         <!-- Capture button -->
         <ImageButton
             android:id="@+id/captureButton"
@@ -95,11 +101,5 @@
             app:layout_constraintTop_toTopOf="parent" />
 
     </androidx.constraintlayout.widget.ConstraintLayout>
-
-
-
-    <!-- Exposure control -->
-
-
 
 </androidx.constraintlayout.widget.ConstraintLayout>

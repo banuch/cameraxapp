@@ -1,16 +1,20 @@
-/**
- * MainActivity.kt
- */
 package com.example.cameraxapp
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.view.View
 import android.widget.SeekBar
 import android.widget.Toast
+import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageProxy
+import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.lifecycle.lifecycleScope
 import com.example.cameraxapp.databinding.ActivityMainBinding
 import kotlinx.coroutines.flow.collectLatest
@@ -18,7 +22,9 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-
+import java.util.concurrent.Executors
+import android.os.Handler
+import android.os.Looper
 /**
  * MainActivity for the Camera Application
  *
@@ -32,11 +38,17 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener,
     private lateinit var permissionManager: PermissionManager
     private lateinit var cameraManager: CameraManager
     private lateinit var fileManager: FileManager
+    private lateinit var cameraExecutor: java.util.concurrent.ExecutorService
+    private lateinit var cameraProvider: ProcessCameraProvider
 
+    @RequiresApi(Build.VERSION_CODES.P)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // Initialize executor
+        cameraExecutor = Executors.newSingleThreadExecutor()
 
         // Initialize managers
         initializeManagers()
@@ -69,6 +81,7 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener,
     /**
      * Sets up UI element listeners such as the capture button
      */
+    @RequiresApi(Build.VERSION_CODES.P)
     private fun setupListeners() {
         // Capture button click listener
         binding.captureButton.setOnClickListener {
@@ -77,9 +90,8 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener,
                 binding.captureButton.animate().scaleX(1f).scaleY(1f).setDuration(100)
             }
 
-            // Take photo
-            val timestamp = SimpleDateFormat(FILENAME_FORMAT, Locale.US).format(Date())
-            cameraManager.takePhoto(timestamp)
+            // Take photo with ROI and detect meter
+            takePhotoWithRoiAndDetection()
         }
 
         // Setup zoom control
@@ -91,8 +103,55 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener,
                 updateZoomTextValue(zoomRatio)
             }
         }
+    }
 
+    /**
+     * Takes a photo with ROI processing and meter detection
+     */
+    @RequiresApi(Build.VERSION_CODES.P)
+    private fun takePhotoWithRoiAndDetection() {
+        // Get ROI rectangle from overlay
+        val roiRect = binding.roiOverlay.getRoiRect()
 
+        // Show progress indicator
+        binding.progressIndicator.visibility = View.VISIBLE
+
+        // Use ImageAnalysis to get a bitmap from the current camera frame
+        val imageAnalysis = ImageAnalysis.Builder()
+            .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888)
+            .build()
+
+        imageAnalysis.setAnalyzer(cameraExecutor) { imageProxy ->
+            // Generate timestamp
+            val timestamp = SimpleDateFormat(FILENAME_FORMAT, Locale.US).format(Date())
+
+            // Process ROI and detect meter
+            cameraManager.processRoiAndDetectMeter(imageProxy, roiRect, timestamp)
+
+            // Hide progress indicator - already wrapped in runOnUiThread, which is good
+            runOnUiThread {
+                binding.progressIndicator.visibility = View.GONE
+            }
+
+            // Close the image proxy
+            imageProxy.close()
+
+            // Remove the analyzer to stop processing
+            imageAnalysis.clearAnalyzer()
+        }
+
+        // Get camera provider and bind the image analysis use case
+        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
+        cameraProviderFuture.addListener({
+            try {
+                cameraProvider = cameraProviderFuture.get()
+                // Use a proper CameraSelector
+                val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+                cameraProvider.bindToLifecycle(this, cameraSelector, imageAnalysis)
+            } catch (e: Exception) {
+                onCameraError("Failed to bind image analysis: ${e.message}")
+            }
+        }, mainExecutor)
     }
 
     /**
@@ -103,13 +162,13 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener,
         binding.zoomValueText.text = formattedZoom
 
         // Make sure zoom text is visible when zooming
-        if (binding.zoomValueText.visibility != android.view.View.VISIBLE) {
-            binding.zoomValueText.visibility = android.view.View.VISIBLE
+        if (binding.zoomValueText.visibility != View.VISIBLE) {
+            binding.zoomValueText.visibility = View.VISIBLE
         }
 
         // Hide zoom text after a delay
         binding.zoomValueText.postDelayed({
-            binding.zoomValueText.visibility = android.view.View.GONE
+            binding.zoomValueText.visibility = View.GONE
         }, 2000)
     }
 
@@ -142,12 +201,15 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener,
      * @param message Message to display
      */
     private fun showToast(message: String) {
-        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+        runOnUiThread {
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
         cameraManager.shutdown()
+        cameraExecutor.shutdown()
     }
 
     //
@@ -166,12 +228,18 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener,
     // CameraManager.CameraListener implementation
     //
 
-    override fun onPhotoTaken(savedUri: Uri?, timestamp: String) {
+    override fun onPhotoTaken(savedUri: Uri?, timestamp: String, meterReading: String?) {
         if (savedUri != null) {
-            showToast("Photo saved successfully")
+            val message = if (meterReading != null) {
+                "Photo saved with meter reading: $meterReading"
+            } else {
+                "Photo saved successfully"
+            }
+
+            showToast(message)
 
             // Save metadata
-            fileManager.saveJsonMetadata(savedUri, timestamp)
+            fileManager.saveJsonMetadata(savedUri, timestamp, meterReading)
 
             // Notify gallery on older Android versions
             fileManager.notifyGallery(savedUri)

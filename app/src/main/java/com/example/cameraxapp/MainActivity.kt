@@ -111,7 +111,7 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener,
     @RequiresApi(Build.VERSION_CODES.P)
     private fun takePhotoWithRoiAndDetection() {
         // Get ROI rectangle from overlay
-        val roiRect = binding.roiOverlay.getRoiRect()
+        val roiRect = binding.roiOverlay.getROIRect()
 
         // Show progress indicator
         binding.progressIndicator.visibility = View.VISIBLE

@@ -286,39 +286,117 @@ class CameraManager(
      * @param roiRect Region of interest rectangle (in preview coordinates)
      * @param timestamp Timestamp for the filename
      */
+    /**
+     * Processes the captured image from ROI and runs meter detection
+     *
+     * @param imageProxy Image from camera frame
+     * @param roiRect Region of interest rectangle (in preview coordinates)
+     * @param timestamp Timestamp for the filename
+     */
+    /**
+     * Processes the captured image from ROI and runs meter detection
+     *
+     * @param imageProxy Image from camera frame
+     * @param roiRect Region of interest rectangle (in preview coordinates)
+     * @param timestamp Timestamp for the filename
+     */
     fun processRoiAndDetectMeter(imageProxy: ImageProxy, roiRect: RectF, timestamp: String) {
         Log.d(tag, "Processing ROI and detecting meter")
 
         try {
-            // Convert ImageProxy to Bitmap
-            val bitmap = imageProxyToBitmap(imageProxy)
+            // Get the image rotation from the imageProxy
+            val imageRotation = imageProxy.imageInfo.rotationDegrees
+            Log.d(tag, "Image rotation: $imageRotation")
 
-            // Convert ROI rect from view coordinates to bitmap coordinates
+            // Convert ImageProxy to Bitmap with correct rotation
+            val bitmap = imageProxyToBitmap(imageProxy, imageRotation)
+
+            // Get preview view dimensions
             val viewFinderWidth = viewFinder.width.toFloat()
             val viewFinderHeight = viewFinder.height.toFloat()
 
-            val bitmapWidth = bitmap.width.toFloat()
-            val bitmapHeight = bitmap.height.toFloat()
+            // Calculate scale factors based on rotation
+            val (scaleX, scaleY) = if (imageRotation == 90 || imageRotation == 270) {
+                // When rotated 90 or 270 degrees, width and height are swapped
+                Pair(bitmap.height.toFloat() / viewFinderWidth,
+                    bitmap.width.toFloat() / viewFinderHeight)
+            } else {
+                Pair(bitmap.width.toFloat() / viewFinderWidth,
+                    bitmap.height.toFloat() / viewFinderHeight)
+            }
 
-            val scaleX = bitmapWidth / viewFinderWidth
-            val scaleY = bitmapHeight / viewFinderHeight
+            // Calculate ROI coordinates in bitmap space accounting for rotation
+            val bitmapRoi = when (imageRotation) {
+                0 -> {
+                    // No rotation
+                    Rect(
+                        (roiRect.left * scaleX).toInt().coerceIn(0, bitmap.width - 1),
+                        (roiRect.top * scaleY).toInt().coerceIn(0, bitmap.height - 1),
+                        (roiRect.right * scaleX).toInt().coerceIn(0, bitmap.width),
+                        (roiRect.bottom * scaleY).toInt().coerceIn(0, bitmap.height)
+                    )
+                }
+                90 -> {
+                    // 90 degrees clockwise rotation (common in portrait mode)
+                    Rect(
+                        (roiRect.top * scaleX).toInt().coerceIn(0, bitmap.width - 1),
+                        bitmap.height - (roiRect.right * scaleY).toInt().coerceIn(0, bitmap.height),
+                        (roiRect.bottom * scaleX).toInt().coerceIn(0, bitmap.width),
+                        bitmap.height - (roiRect.left * scaleY).toInt().coerceIn(0, bitmap.height - 1)
+                    )
+                }
+                180 -> {
+                    // 180 degrees rotation
+                    Rect(
+                        bitmap.width - (roiRect.right * scaleX).toInt().coerceIn(0, bitmap.width),
+                        bitmap.height - (roiRect.bottom * scaleY).toInt().coerceIn(0, bitmap.height),
+                        bitmap.width - (roiRect.left * scaleX).toInt().coerceIn(0, bitmap.width - 1),
+                        bitmap.height - (roiRect.top * scaleY).toInt().coerceIn(0, bitmap.height - 1)
+                    )
+                }
+                270 -> {
+                    // 270 degrees clockwise rotation
+                    Rect(
+                        bitmap.width - (roiRect.bottom * scaleX).toInt().coerceIn(0, bitmap.width),
+                        (roiRect.left * scaleY).toInt().coerceIn(0, bitmap.height - 1),
+                        bitmap.width - (roiRect.top * scaleX).toInt().coerceIn(0, bitmap.width - 1),
+                        (roiRect.right * scaleY).toInt().coerceIn(0, bitmap.height)
+                    )
+                }
+                else -> {
+                    // Default to no rotation if unknown value
+                    Rect(
+                        (roiRect.left * scaleX).toInt().coerceIn(0, bitmap.width - 1),
+                        (roiRect.top * scaleY).toInt().coerceIn(0, bitmap.height - 1),
+                        (roiRect.right * scaleX).toInt().coerceIn(0, bitmap.width),
+                        (roiRect.bottom * scaleY).toInt().coerceIn(0, bitmap.height)
+                    )
+                }
+            }
 
-            val bitmapRoiLeft = (roiRect.left * scaleX).toInt().coerceIn(0, bitmap.width - 1)
-            val bitmapRoiTop = (roiRect.top * scaleY).toInt().coerceIn(0, bitmap.height - 1)
-            val bitmapRoiRight = (roiRect.right * scaleX).toInt().coerceIn(0, bitmap.width)
-            val bitmapRoiBottom = (roiRect.bottom * scaleY).toInt().coerceIn(0, bitmap.height)
+            // Ensure ROI is valid (positive width and height)
+            val roiWidth = bitmapRoi.width()
+            val roiHeight = bitmapRoi.height()
 
-            val roiWidth = bitmapRoiRight - bitmapRoiLeft
-            val roiHeight = bitmapRoiBottom - bitmapRoiTop
+            if (roiWidth <= 0 || roiHeight <= 0) {
+                throw IllegalArgumentException("Invalid ROI dimensions: $roiWidth x $roiHeight")
+            }
+
+            // Log ROI dimensions for debugging
+            Log.d(tag, "Bitmap dimensions: ${bitmap.width} x ${bitmap.height}")
+            Log.d(tag, "ROI dimensions: $roiWidth x $roiHeight at (${bitmapRoi.left}, ${bitmapRoi.top})")
 
             // Crop the ROI from the original bitmap
             val croppedBitmap = Bitmap.createBitmap(
                 bitmap,
-                bitmapRoiLeft,
-                bitmapRoiTop,
+                bitmapRoi.left,
+                bitmapRoi.top,
                 roiWidth,
                 roiHeight
             )
+
+            // Optionally save the original ROI for debugging (comment out if not needed)
+            // saveProcessedBitmap(croppedBitmap, "${timestamp}_original")
 
             // Create detector and run detection
             val meterDetector = MeterDetector(activity)
@@ -355,7 +433,14 @@ class CameraManager(
     /**
      * Convert ImageProxy to Bitmap
      */
-    private fun imageProxyToBitmap(imageProxy: ImageProxy): Bitmap {
+    /**
+     * Convert ImageProxy to Bitmap with correct rotation
+     *
+     * @param imageProxy The image from camera
+     * @param rotation The rotation in degrees (0, 90, 180, 270)
+     * @return Properly rotated bitmap
+     */
+    private fun imageProxyToBitmap(imageProxy: ImageProxy, rotation: Int = 0): Bitmap {
         val yBuffer = imageProxy.planes[0].buffer
         val uBuffer = imageProxy.planes[1].buffer
         val vBuffer = imageProxy.planes[2].buffer
@@ -375,7 +460,27 @@ class CameraManager(
         yuvImage.compressToJpeg(Rect(0, 0, imageProxy.width, imageProxy.height), 100, out)
         val imageBytes = out.toByteArray()
 
-        return BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+        // Decode the byte array into a bitmap
+        val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+
+        // If no rotation needed, return the bitmap as is
+        if (rotation == 0) {
+            return bitmap
+        }
+
+        // Create a matrix for the rotation
+        val matrix = android.graphics.Matrix()
+        matrix.postRotate(rotation.toFloat())
+
+        // Create a new bitmap that is rotated
+        val rotatedBitmap = Bitmap.createBitmap(
+            bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true
+        )
+
+        // Recycle the original bitmap to free memory
+        bitmap.recycle()
+
+        return rotatedBitmap
     }
 
     /**

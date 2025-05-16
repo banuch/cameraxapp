@@ -12,4 +12,7 @@
     <string name="flash_mode">Flash Mode</string>
     <string name="roi_selection">Region of Interest Selection</string>
     <string name="_1_0x">1.0x</string>
+    <string name="tap_process">Tap \'Process\'</string>
+    <string name="captured_meter_image">Captured Meter Image</string>
+    <string name="enter_value">Enter Value</string>
 </resources>

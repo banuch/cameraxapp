@@ -1,258 +1,384 @@
 package com.example.cameraxapp
 
-import android.content.Intent
-import android.net.Uri
-import android.os.Build
 import android.os.Bundle
-import android.provider.Settings
+import android.util.Log
 import android.view.View
+import android.widget.Button
+import android.widget.ImageButton
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.SeekBar
+import android.widget.TextView
 import android.widget.Toast
-import androidx.annotation.RequiresApi
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
-import androidx.camera.core.CameraSelector
-import androidx.camera.core.ImageAnalysis
-import androidx.camera.core.ImageProxy
-import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
 import androidx.lifecycle.lifecycleScope
-import com.example.cameraxapp.databinding.ActivityMainBinding
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import java.util.concurrent.Executors
-import android.os.Handler
-import android.os.Looper
-/**
- * MainActivity for the Camera Application
- *
- * This activity coordinates between permission handling, camera operations, and file management
- * while providing a user interface for camera preview and photo capture.
- */
-class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener,
-    CameraManager.CameraListener {
 
-    private lateinit var binding: ActivityMainBinding
+class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
+    private val tag = "MainActivity"
+
+    // UI components
+    private lateinit var previewView: PreviewView
+    private lateinit var roiOverlay: ROIOverlay
+    private lateinit var captureButton: Button
+    private lateinit var flashButton: ImageButton
+    private lateinit var switchButton: ImageButton
+    private lateinit var zoomSeekBar: SeekBar
+    private lateinit var progressBar: ProgressBar
+    private lateinit var resultLayout: LinearLayout
+    private lateinit var resultImageView: ImageView
+    private lateinit var readingTextView: TextView
+    private lateinit var saveButton: Button
+    private lateinit var retakeButton: Button
+    private lateinit var processButton: Button
+
+    // Managers and detectors
     private lateinit var permissionManager: PermissionManager
     private lateinit var cameraManager: CameraManager
-    private lateinit var fileManager: FileManager
-    private lateinit var cameraExecutor: java.util.concurrent.ExecutorService
-    private lateinit var cameraProvider: ProcessCameraProvider
+    private lateinit var meterDetector: MeterDetector
 
-    @RequiresApi(Build.VERSION_CODES.P)
+    // State variables
+    private var currentCaptureResult: CameraManager.CaptureResult? = null
+    private var currentMeterReading: String? = null
+    private val inputNumber = StringBuilder()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        binding = ActivityMainBinding.inflate(layoutInflater)
-        setContentView(binding.root)
+        setContentView(R.layout.activity_main)
 
-        // Initialize executor
-        cameraExecutor = Executors.newSingleThreadExecutor()
+        // Initialize UI components
+        initializeViews()
 
-        // Initialize managers
-        initializeManagers()
+        // Initialize permission manager
+        permissionManager = PermissionManager(this, this)
 
-        // Set up UI listeners
-        setupListeners()
+        // Initialize meter detector
+        meterDetector = MeterDetector(this)
 
-        // Request permissions and start camera if granted
+        // Request permissions
         permissionManager.requestPermissions()
     }
 
     /**
-     * Initialize all manager classes
+     * Initialize UI components and set up listeners
      */
-    private fun initializeManagers() {
-        // Create permission manager
-        permissionManager = PermissionManager(this, this)
+    private fun initializeViews() {
+        // Camera preview components
+        previewView = findViewById(R.id.viewFinder)
+        roiOverlay = findViewById(R.id.roiOverlay)
+        captureButton = findViewById(R.id.captureButton)
+        flashButton = findViewById(R.id.flashButton)
+        switchButton = findViewById(R.id.switchButton)
+        zoomSeekBar = findViewById(R.id.zoomSeekBar)
+        progressBar = findViewById(R.id.progressBar)
 
-        // Create file manager
-        fileManager = FileManager(this)
+        // Result view components
+        resultLayout = findViewById(R.id.resultLayout)
+        resultImageView = findViewById(R.id.resultImageView)
+        readingTextView = findViewById(R.id.readingTextView)
+        saveButton = findViewById(R.id.saveButton)
+        retakeButton = findViewById(R.id.retakeButton)
+        processButton = findViewById(R.id.processButton)
 
-        // Create camera manager
-        cameraManager = CameraManager(
-            this,
-            binding.viewFinder,
-            this
-        )
+        // Set up button click listeners
+        captureButton.setOnClickListener {
+            captureImage()
+        }
+
+        flashButton.setOnClickListener {
+            toggleFlash()
+        }
+
+        switchButton.setOnClickListener {
+            switchCamera()
+        }
+
+        saveButton.setOnClickListener {
+            saveCurrentImage()
+        }
+        readingTextView.setOnClickListener {
+            showNumericBottomDialog()
+        }
+
+        retakeButton.setOnClickListener {
+            showCameraView()
+        }
+
+        processButton.setOnClickListener {
+            processCurrentImage()
+        }
+
+        // Set up zoom seekbar
+        zoomSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (fromUser && ::cameraManager.isInitialized) {
+                    val zoomLevel = progress / 100f
+                    cameraManager.setZoom(zoomLevel)
+                }
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
     }
 
     /**
-     * Sets up UI element listeners such as the capture button
+     * Initialize camera after permissions are granted
      */
-    @RequiresApi(Build.VERSION_CODES.P)
-    private fun setupListeners() {
-        // Capture button click listener
-        binding.captureButton.setOnClickListener {
-            // Show animation feedback
-            binding.captureButton.animate().scaleX(0.9f).scaleY(0.9f).setDuration(100).withEndAction {
-                binding.captureButton.animate().scaleX(1f).scaleY(1f).setDuration(100)
-            }
+    private fun initializeCamera() {
+        Log.d(tag, "Initializing camera")
 
-            // Take photo with ROI and detect meter
-            takePhotoWithRoiAndDetection()
-        }
+        // Initialize camera manager
+        cameraManager = CameraManager(this, this, previewView, roiOverlay)
 
-        // Setup zoom control
-        cameraManager.setupZoomControl(binding.zoomSeekBar)
-
-        // Observe zoom changes to update text
+        // Observe camera capture results
         lifecycleScope.launch {
-            cameraManager.currentZoomRatio.collectLatest { zoomRatio ->
-                updateZoomTextValue(zoomRatio)
+            cameraManager.captureResult.collectLatest { result ->
+                result?.let {
+                    currentCaptureResult = it
+                    showResultView(it)
+                }
             }
+        }
+
+        // Start camera
+        cameraManager.initialize()
+    }
+
+    /**
+     * Capture button click handler
+     */
+    private fun captureImage() {
+        if (::cameraManager.isInitialized) {
+            // Show progress indicator
+            progressBar.visibility = View.VISIBLE
+            captureButton.isEnabled = false
+
+            // Capture image
+            cameraManager.captureImage()
         }
     }
 
     /**
-     * Takes a photo with ROI processing and meter detection
+     * Toggle camera flash
      */
-    @RequiresApi(Build.VERSION_CODES.P)
-    private fun takePhotoWithRoiAndDetection() {
-        // Get ROI rectangle from overlay
-        val roiRect = binding.roiOverlay.getROIRect()
+    private fun toggleFlash() {
+        if (::cameraManager.isInitialized) {
+            val flashOn = cameraManager.toggleFlash()
+            flashButton.setImageResource(
+                if (flashOn) R.drawable.ic_flash_on
+                else R.drawable.ic_flash_off
+            )
+        }
+    }
 
-        // Show progress indicator
-        binding.progressIndicator.visibility = View.VISIBLE
+    /**
+     * Switch between front and back cameras
+     */
+    private fun switchCamera() {
+        if (::cameraManager.isInitialized) {
+            cameraManager.switchCamera()
+        }
+    }
 
-        // Use ImageAnalysis to get a bitmap from the current camera frame
-        val imageAnalysis = ImageAnalysis.Builder()
-            .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888)
-            .build()
+    /**
+     * Show camera preview view
+     */
+    private fun showCameraView() {
+        resultLayout.visibility = View.GONE
+        previewView.visibility = View.VISIBLE
+        roiOverlay.visibility = View.VISIBLE
+        captureButton.visibility = View.VISIBLE
+        flashButton.visibility = View.VISIBLE
+        switchButton.visibility = View.VISIBLE
+        zoomSeekBar.visibility = View.VISIBLE
 
-        imageAnalysis.setAnalyzer(cameraExecutor) { imageProxy ->
-            // Generate timestamp
-            val timestamp = SimpleDateFormat(FILENAME_FORMAT, Locale.US).format(Date())
-
-            // Process ROI and detect meter
-            cameraManager.processRoiAndDetectMeter(imageProxy, roiRect, timestamp)
-
-            // Hide progress indicator - already wrapped in runOnUiThread, which is good
-            runOnUiThread {
-                binding.progressIndicator.visibility = View.GONE
+        // Clean up previous bitmaps to prevent memory leaks
+        currentCaptureResult?.let {
+            ImageCropper.safeRecycle(it.roiBitmap)
+            ImageCropper.safeRecycle(it.modelBitmap)
+            if (it.originalBitmap != it.roiBitmap && it.originalBitmap != it.modelBitmap) {
+                ImageCropper.safeRecycle(it.originalBitmap)
             }
-
-            // Close the image proxy
-            imageProxy.close()
-
-            // Remove the analyzer to stop processing
-            imageAnalysis.clearAnalyzer()
         }
 
-        // Get camera provider and bind the image analysis use case
-        val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
-        cameraProviderFuture.addListener({
+        // Reset current capture result
+        currentCaptureResult = null
+        currentMeterReading = null
+    }
+    private fun showNumericBottomDialog() {
+        // Inflate the custom layout
+        val inflater = layoutInflater
+        val dialogView = inflater.inflate(R.layout.dialog_numeric_keyboard, null)
+
+        // Initialize BottomSheetDialog with the custom view
+        val bottomSheetDialog = BottomSheetDialog(this)
+        bottomSheetDialog.setContentView(dialogView)
+        bottomSheetDialog.show()
+
+        // Set up display TextView to show entered numbers
+        val displayText = dialogView.findViewById<TextView>(R.id.txtTitle)
+        inputNumber.clear()
+
+
+        // Numeric buttons logic
+        val numberButtonListener = View.OnClickListener { view ->
+            val button = view as Button
+            inputNumber.append(button.text.toString())
+            displayText.text = inputNumber.toString()
+        }
+
+        // Assign listener to each number button
+        dialogView.findViewById<Button>(R.id.button_0).setOnClickListener(numberButtonListener)
+        dialogView.findViewById<Button>(R.id.button_1).setOnClickListener(numberButtonListener)
+        dialogView.findViewById<Button>(R.id.button_2).setOnClickListener(numberButtonListener)
+        dialogView.findViewById<Button>(R.id.button_3).setOnClickListener(numberButtonListener)
+        dialogView.findViewById<Button>(R.id.button_4).setOnClickListener(numberButtonListener)
+        dialogView.findViewById<Button>(R.id.button_5).setOnClickListener(numberButtonListener)
+        dialogView.findViewById<Button>(R.id.button_6).setOnClickListener(numberButtonListener)
+        dialogView.findViewById<Button>(R.id.button_7).setOnClickListener(numberButtonListener)
+        dialogView.findViewById<Button>(R.id.button_8).setOnClickListener(numberButtonListener)
+        dialogView.findViewById<Button>(R.id.button_9).setOnClickListener(numberButtonListener)
+        dialogView.findViewById<Button>(R.id.button_decimal)
+            .setOnClickListener(numberButtonListener)
+
+        // Clear button logic
+        dialogView.findViewById<Button>(R.id.button_clear).setOnClickListener {
+            inputNumber.setLength(0)
+            displayText.text = ""
+        }
+
+        // Enter button logic
+        dialogView.findViewById<Button>(R.id.button_enter).setOnClickListener {
+            readingTextView.text=inputNumber.toString()
+            //binding.resultsTextbox.text = inputNumber.toString()
+            //txtResult.text = inputNumber.toString()
+            // Process the entered value
+            bottomSheetDialog.dismiss()
+        }
+    }
+
+    /**
+     * Show result view with captured image
+     */
+    private fun showResultView(result: CameraManager.CaptureResult) {
+        // Hide progress indicator
+        progressBar.visibility = View.GONE
+        captureButton.isEnabled = true
+
+        // Update UI
+        resultImageView.setImageBitmap(result.roiBitmap)
+        resultLayout.visibility = View.VISIBLE
+        previewView.visibility = View.GONE
+        roiOverlay.visibility = View.GONE
+        captureButton.visibility = View.GONE
+        flashButton.visibility = View.GONE
+        switchButton.visibility = View.GONE
+        zoomSeekBar.visibility = View.GONE
+
+        // Clear previous reading
+        readingTextView.text = "Tap 'Process'"
+        currentMeterReading = null
+    }
+
+    /**
+     * Process the current captured image
+     */
+    private fun processCurrentImage() {
+        val result = currentCaptureResult ?: return
+
+        // Show progress
+        progressBar.visibility = View.VISIBLE
+        processButton.isEnabled = false
+
+        // Process in background
+        lifecycleScope.launch {
             try {
-                cameraProvider = cameraProviderFuture.get()
-                // Use a proper CameraSelector
-                val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
-                cameraProvider.bindToLifecycle(this, cameraSelector, imageAnalysis)
+                // Detect meter reading
+                val (detections, resultBitmap) = meterDetector.detectMeterReading(result.modelBitmap)
+
+                // Extract meter reading
+                currentMeterReading = meterDetector.extractMeterReading(detections)
+
+                // Update UI
+                resultImageView.setImageBitmap(resultBitmap)
+                readingTextView.text = if (currentMeterReading.isNullOrEmpty()) {
+                    "No meter reading detected"
+                } else {
+                    "$currentMeterReading"
+                }
             } catch (e: Exception) {
-                onCameraError("Failed to bind image analysis: ${e.message}")
+                Log.e(tag, "Processing failed: ${e.message}", e)
+                readingTextView.text = "Processing failed: ${e.message}"
+            } finally {
+                // Hide progress
+                progressBar.visibility = View.GONE
+                processButton.isEnabled = true
             }
-        }, mainExecutor)
-    }
-
-    /**
-     * Updates the zoom text value display
-     */
-    private fun updateZoomTextValue(zoomRatio: Float) {
-        val formattedZoom = String.format("%.1fx", zoomRatio)
-        binding.zoomValueText.text = formattedZoom
-
-        // Make sure zoom text is visible when zooming
-        if (binding.zoomValueText.visibility != View.VISIBLE) {
-            binding.zoomValueText.visibility = View.VISIBLE
         }
-
-        // Hide zoom text after a delay
-        binding.zoomValueText.postDelayed({
-            binding.zoomValueText.visibility = View.GONE
-        }, 2000)
     }
 
     /**
-     * Shows a dialog explaining why permissions are needed
+     * Save the current image and detected reading
      */
-    private fun showPermissionRationaleDialog() {
-        AlertDialog.Builder(this)
-            .setTitle("Permissions Required")
-            .setMessage("This app needs camera and storage permissions to capture and save photos. " +
-                    "Please grant these permissions to continue.")
-            .setPositiveButton("Settings") { _, _ ->
-                // Open app settings
-                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-                val uri = Uri.fromParts("package", packageName, null)
-                intent.data = uri
-                startActivity(intent)
-            }
-            .setNegativeButton("Cancel") { _, _ ->
-                showToast("Permissions are required to use this app")
-                finish()
-            }
-            .setCancelable(false)
-            .show()
-    }
+    private fun saveCurrentImage() {
+        val result = currentCaptureResult ?: return
 
-    /**
-     * Shows a toast message
-     *
-     * @param message Message to display
-     */
-    private fun showToast(message: String) {
-        runOnUiThread {
-            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+        progressBar.visibility = View.VISIBLE
+        saveButton.isEnabled = false
+
+        lifecycleScope.launch {
+            try {
+                cameraManager.saveImage(result, currentMeterReading)
+                showCameraView()
+            } catch (e: Exception) {
+                Log.e(tag, "Failed to save: ${e.message}", e)
+                Toast.makeText(this@MainActivity, "Failed to save image", Toast.LENGTH_SHORT).show()
+            } finally {
+                progressBar.visibility = View.GONE
+                saveButton.isEnabled = true
+            }
         }
+    }
+
+    /**
+     * Permission granted callback
+     */
+    override fun onPermissionsGranted() {
+        Log.d(tag, "All permissions granted")
+        initializeCamera()
+    }
+
+    /**
+     * Permission denied callback
+     */
+    override fun onPermissionsDenied() {
+        Log.e(tag, "Permissions denied")
+        Toast.makeText(this, "Camera and storage permissions are required", Toast.LENGTH_LONG).show()
+        finish()
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        cameraManager.shutdown()
-        cameraExecutor.shutdown()
-    }
 
-    //
-    // PermissionManager.PermissionListener implementation
-    //
-
-    override fun onPermissionsGranted() {
-        cameraManager.startCamera(binding.zoomSeekBar)
-    }
-
-    override fun onPermissionsDenied() {
-        showPermissionRationaleDialog()
-    }
-
-    //
-    // CameraManager.CameraListener implementation
-    //
-
-    override fun onPhotoTaken(savedUri: Uri?, timestamp: String, meterReading: String?) {
-        if (savedUri != null) {
-            val message = if (meterReading != null) {
-                "Photo saved with meter reading: $meterReading"
-            } else {
-                "Photo saved successfully"
-            }
-
-            showToast(message)
-
-            // Save metadata
-            fileManager.saveJsonMetadata(savedUri, timestamp, meterReading)
-
-            // Notify gallery on older Android versions
-            fileManager.notifyGallery(savedUri)
-        } else {
-            showToast("Photo saved but location unknown")
+        // Clean up bitmaps
+        currentCaptureResult?.let {
+            ImageCropper.safeRecycle(it.roiBitmap)
+            ImageCropper.safeRecycle(it.modelBitmap)
+            ImageCropper.safeRecycle(it.originalBitmap)
         }
-    }
 
-    override fun onCameraError(message: String) {
-        showToast("Camera error: $message")
-    }
-
-    companion object {
-        private const val FILENAME_FORMAT = "yyyyMMdd_HHmmss"
+        // Clean up other resources
+        if (::cameraManager.isInitialized) {
+            cameraManager.shutdown()
+        }
+        if (::meterDetector.isInitialized) {
+            meterDetector.close()
+        }
     }
 }

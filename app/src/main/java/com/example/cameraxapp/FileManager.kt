@@ -30,7 +30,7 @@ class FileManager(private val context: Context) {
      * @param timestamp Formatted timestamp string
      * @param meterReading Optional meter reading detected from the image
      */
-    fun saveJsonMetadata(imageUri: Uri, timestamp: String, meterReading: String? = null) {
+    fun saveJsonMetadata(imageUri: Uri, timestamp: String, meterReading: String? = null,savedFilename: String?=null) {
         Log.d(tag, "Saving JSON metadata for image: $imageUri")
 
         try {
@@ -51,7 +51,7 @@ class FileManager(private val context: Context) {
             }
 
             val jsonString = jsonObject.toString()
-            val jsonFileName = "METADATA_$timestamp.json"
+            val jsonFileName = "{$savedFilename}.json"
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 // For Android 10 and above

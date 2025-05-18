@@ -81,7 +81,8 @@ class MeterDetector(private val context: Context) {
         val detections = processYoloOutput(outputBuffer[0], inputSize, inputSize)
 
         // Draw detections on a copy of the input image
-        val resultBitmap = drawDetections(inputBitmap, detections)
+       // val resultBitmap = drawDetections(inputBitmap, detections)
+        var resultBitmap = inputBitmap
 
         return Pair(detections, resultBitmap)
     }

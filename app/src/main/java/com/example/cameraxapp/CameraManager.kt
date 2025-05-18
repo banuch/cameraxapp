@@ -298,7 +298,7 @@ class CameraManager(
     /**
      * Save the captured image and metadata
      */
-    fun saveImage(result: CaptureResult, meterReading: String? = null) {
+    fun saveImage(result: CaptureResult, meterReading: String? = null,savedFilename: String?=null) {
         try {
             // Convert bitmap to JPEG bytes
             val outputStream = ByteArrayOutputStream()
@@ -306,7 +306,7 @@ class CameraManager(
             val jpegBytes = outputStream.toByteArray()
 
             // Generate image file name
-            val fileName = "METER_${result.timestamp}.jpg"
+            val fileName = "${savedFilename}}.jpg"
 
             // Save to storage
             val (uri, stream) = FileUtils.createImageFile(
@@ -323,7 +323,8 @@ class CameraManager(
 
                 // Save metadata
                 val fileManager = FileManager(context)
-                fileManager.saveJsonMetadata(uri, result.timestamp, meterReading)
+                fileManager.saveJsonMetadata(uri, result.timestamp, meterReading,savedFilename)
+                //fileManager.saveJsonMetadata(uri, jsonFileName, result.timestamp, meterReading)
                 fileManager.notifyGallery(uri)
 
                 Toast.makeText(context, "Image saved successfully", Toast.LENGTH_SHORT).show()

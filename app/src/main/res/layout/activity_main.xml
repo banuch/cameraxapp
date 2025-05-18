@@ -6,25 +6,48 @@
     android:layout_height="match_parent"
     tools:context=".MainActivity">
 
-    <!-- Camera Preview -->
+    <!-- Title Bar -->
+    <androidx.appcompat.widget.Toolbar
+        android:id="@+id/titleBar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="#80000000"
+        android:elevation="4dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <TextView
+            android:id="@+id/titleTextView"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:text="Meter Reader"
+            android:textColor="@android:color/white"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+    </androidx.appcompat.widget.Toolbar>
+
+    <!-- Camera Preview - adjusted to be below title bar -->
     <androidx.camera.view.PreviewView
         android:id="@+id/viewFinder"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintTop_toBottomOf="@id/titleBar" />
 
-    <!-- ROI Overlay for meter targeting -->
+    <!-- ROI Overlay for meter targeting - adjusted to match viewFinder -->
     <com.example.cameraxapp.ROIOverlay
         android:id="@+id/roiOverlay"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        app:layout_constraintBottom_toBottomOf="@id/viewFinder"
+        app:layout_constraintEnd_toEndOf="@id/viewFinder"
+        app:layout_constraintStart_toStartOf="@id/viewFinder"
+        app:layout_constraintTop_toTopOf="@id/viewFinder" />
 
     <!-- Controls Container -->
     <androidx.constraintlayout.widget.ConstraintLayout
@@ -39,9 +62,10 @@
         <ImageButton
             android:id="@+id/switchButton"
             android:layout_width="48dp"
+            android:visibility="invisible"
             android:layout_height="48dp"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Switch Camera"
+            android:contentDescription="@string/switch_camera"
             android:padding="8dp"
             android:src="@drawable/ic_switch_camera"
             app:layout_constraintBottom_toBottomOf="@+id/captureButton"
@@ -134,9 +158,6 @@
             android:textStyle="bold"
             android:text="@string/tap_process"
             android:textSize="24sp" />
-<!--            android:text="Tap 'Process' to detect meter reading"-->
-
-
 
         <!-- Result Action Buttons -->
         <LinearLayout

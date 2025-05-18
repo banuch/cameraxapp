@@ -1,6 +1,8 @@
 package com.example.cameraxapp
 
+import android.content.pm.PackageManager
 import android.os.Bundle
+import android.renderscript.ScriptGroup
 import android.util.Log
 import android.view.View
 import android.widget.Button
@@ -15,8 +17,10 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.view.PreviewView
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.bottomsheet.BottomSheetDialog
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
     private val tag = "MainActivity"
@@ -32,6 +36,8 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
     private lateinit var resultLayout: LinearLayout
     private lateinit var resultImageView: ImageView
     private lateinit var readingTextView: TextView
+
+    private lateinit var titleTextView: TextView
     private lateinit var saveButton: Button
     private lateinit var retakeButton: Button
     private lateinit var processButton: Button
@@ -46,9 +52,28 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
     private var currentMeterReading: String? = null
     private val inputNumber = StringBuilder()
 
+    private lateinit var intentDataHandler: IntentDataHandler
+
+    var tapCount = 0
+    var editFlag = false
+    var serviceId = "default_service"
+    var valType = "default"
+    var savedFileName="default"
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+
+        // Create an instance with your intent
+        val dataHandler = IntentDataHandler(intent)
+
+
+        serviceId = dataHandler.getServiceId()
+        valType = dataHandler.getValType()
+
+        savedFileName=serviceId+"_"+valType
+
 
         // Initialize UI components
         initializeViews()
@@ -61,6 +86,20 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
 
         // Request permissions
         permissionManager.requestPermissions()
+
+
+
+    }
+
+    private fun getVersionName(): String {
+        return try {
+            val packageManager = packageManager
+            val packageInfo = packageManager.getPackageInfo(packageName, 0)
+            "(Ver:${packageInfo.versionName})"
+        } catch (e: PackageManager.NameNotFoundException) {
+            e.printStackTrace()
+            "Version not found"
+        }
     }
 
     /**
@@ -83,6 +122,7 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
         saveButton = findViewById(R.id.saveButton)
         retakeButton = findViewById(R.id.retakeButton)
         processButton = findViewById(R.id.processButton)
+        titleTextView=findViewById(R.id.titleTextView)
 
         // Set up button click listeners
         captureButton.setOnClickListener {
@@ -101,7 +141,32 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
             saveCurrentImage()
         }
         readingTextView.setOnClickListener {
-            showNumericBottomDialog()
+
+            if ( readingTextView.text.toString() == "No meter detected") {
+                editFlag = true
+
+
+            } else {
+                // editFlag =false
+            }
+
+            tapCount = tapCount + 1
+            if (tapCount == 3) {
+                showNumericBottomDialog()
+                tapCount = 0
+            } else {
+
+                readingTextView.text = buildString {
+                    append("Tap: ")
+                    append(3 - tapCount)
+                    append(" times")
+                }
+            }
+
+
+
+
+            //showNumericBottomDialog()
         }
 
         retakeButton.setOnClickListener {
@@ -109,6 +174,7 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
         }
 
         processButton.setOnClickListener {
+
             processCurrentImage()
         }
 
@@ -125,6 +191,11 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
 
             override fun onStopTrackingTouch(seekBar: SeekBar?) {}
         })
+
+        titleTextView.text= buildString {
+            append("Ebilly OCR")
+            append(getVersionName())
+        };
     }
 
     /**
@@ -292,25 +363,34 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
     private fun processCurrentImage() {
         val result = currentCaptureResult ?: return
 
-        // Show progress
+        // These UI updates are on the main thread
+        readingTextView.text = "Processing..."
         progressBar.visibility = View.VISIBLE
         processButton.isEnabled = false
 
         // Process in background
         lifecycleScope.launch {
             try {
-                // Detect meter reading
-                val (detections, resultBitmap) = meterDetector.detectMeterReading(result.modelBitmap)
+                // Run processing on IO dispatcher
+                val processingResult = withContext(Dispatchers.IO) {
+                    // Detect meter reading
+                    val (detections, resultBitmap) = meterDetector.detectMeterReading(result.modelBitmap)
 
-                // Extract meter reading
-                currentMeterReading = meterDetector.extractMeterReading(detections)
+                    // Extract meter reading
+                    val reading = meterDetector.extractMeterReading(detections)
 
-                // Update UI
+                    Pair(reading, resultBitmap)
+                }
+
+                // Update UI on Main dispatcher
+                val (reading, resultBitmap) = processingResult
+                currentMeterReading = reading
+
                 resultImageView.setImageBitmap(resultBitmap)
-                readingTextView.text = if (currentMeterReading.isNullOrEmpty()) {
-                    "No meter reading detected"
+                readingTextView.text = if (reading.isNullOrEmpty()) {
+                    "No meter detected"
                 } else {
-                    "$currentMeterReading"
+                    "$reading"
                 }
             } catch (e: Exception) {
                 Log.e(tag, "Processing failed: ${e.message}", e)
@@ -334,7 +414,7 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
 
         lifecycleScope.launch {
             try {
-                cameraManager.saveImage(result, currentMeterReading)
+                cameraManager.saveImage(result, currentMeterReading, savedFileName)
                 showCameraView()
             } catch (e: Exception) {
                 Log.e(tag, "Failed to save: ${e.message}", e)

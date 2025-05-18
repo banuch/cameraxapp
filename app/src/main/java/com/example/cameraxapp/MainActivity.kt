@@ -414,7 +414,8 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
 
         lifecycleScope.launch {
             try {
-                cameraManager.saveImage(result, currentMeterReading, savedFileName)
+                Log.d(tag, "Current Reading: $currentMeterReading")
+                cameraManager.saveImage(result, currentMeterReading, savedFileName, editFlag)
                 showCameraView()
             } catch (e: Exception) {
                 Log.e(tag, "Failed to save: ${e.message}", e)

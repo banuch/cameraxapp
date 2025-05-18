@@ -30,7 +30,7 @@ class FileManager(private val context: Context) {
      * @param timestamp Formatted timestamp string
      * @param meterReading Optional meter reading detected from the image
      */
-    fun saveJsonMetadata(imageUri: Uri, timestamp: String, meterReading: String? = null,savedFilename: String?=null) {
+    fun saveJsonMetadata(imageUri: Uri, timestamp: String, meterReading: String? = null,savedFilename: String?=null, isEdited: Boolean) {
         Log.d(tag, "Saving JSON metadata for image: $imageUri")
 
         try {
@@ -40,18 +40,17 @@ class FileManager(private val context: Context) {
                 Locale.US
             ).format(currentTimeMillis)
 
-            val jsonObject = JSONObject().apply {
-                put("imagePath", imageUri.toString())
-                put("timestamp", formattedTimestamp)
-                put("createdAt", currentTimeMillis)
-                put("filename", imageUri.lastPathSegment)
-                if (meterReading != null) {
-                    put("meterReading", meterReading)
-                }
+            // Create JSON object with metadata
+            val metadata = JSONObject().apply {
+                put("timestamp", timestamp)
+                put("meterReading", meterReading ?: "")
+                put("filename", imageUri)
+                put("isEdited", isEdited)
+                // Any other metadata fields you want to include
             }
 
-            val jsonString = jsonObject.toString()
-            val jsonFileName = "{$savedFilename}.json"
+            val jsonString = metadata.toString()
+            val jsonFileName = "$savedFilename.json"
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 // For Android 10 and above
@@ -133,6 +132,6 @@ class FileManager(private val context: Context) {
     }
 
     companion object {
-        private const val APP_FOLDER_NAME = "CameraXApp"
+        private const val APP_FOLDER_NAME = "npdcl"
     }
 }

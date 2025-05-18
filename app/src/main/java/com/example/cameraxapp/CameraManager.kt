@@ -1,5 +1,6 @@
 package com.example.cameraxapp
 
+import android.R
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
@@ -298,7 +299,12 @@ class CameraManager(
     /**
      * Save the captured image and metadata
      */
-    fun saveImage(result: CaptureResult, meterReading: String? = null,savedFilename: String?=null) {
+    fun saveImage(
+        result: CaptureResult,
+        meterReading: String? = null,
+        savedFilename: String? = null,
+        isEdited: Boolean = false
+    ) {
         try {
             // Convert bitmap to JPEG bytes
             val outputStream = ByteArrayOutputStream()
@@ -306,25 +312,28 @@ class CameraManager(
             val jpegBytes = outputStream.toByteArray()
 
             // Generate image file name
-            val fileName = "${savedFilename}}.jpg"
+            val fileName = "${savedFilename}.jpg"
 
             // Save to storage
-            val (uri, stream) = FileUtils.createImageFile(
+            val (uri, stream) = FileUtils.createOrUpdateImageFile(
                 context,
                 fileName,
-                "MeterReaderApp",
+                "npdcl",
                 "image/jpeg"
             )
+
+            Log.d(tag, "image URL: $uri")
+
 
             if (uri != null && stream != null) {
                 // Write JPEG data to file
                 stream.write(jpegBytes)
                 stream.close()
 
-                // Save metadata
+                // Save metadata with isEdited flag
                 val fileManager = FileManager(context)
-                fileManager.saveJsonMetadata(uri, result.timestamp, meterReading,savedFilename)
-                //fileManager.saveJsonMetadata(uri, jsonFileName, result.timestamp, meterReading)
+
+                fileManager.saveJsonMetadata(uri, result.timestamp, meterReading, savedFilename, isEdited)
                 fileManager.notifyGallery(uri)
 
                 Toast.makeText(context, "Image saved successfully", Toast.LENGTH_SHORT).show()

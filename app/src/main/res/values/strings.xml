@@ -15,4 +15,7 @@
     <string name="tap_process">Tap \'Process\'</string>
     <string name="captured_meter_image">Captured Meter Image</string>
     <string name="enter_value">Enter Value</string>
+    <string name="meter_reader">Meter Reader</string>
+    <string name="zoom">Zoom:</string>
+    <string name="exposure">Exposure:</string>
 </resources>

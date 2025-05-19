@@ -1,8 +1,8 @@
 package com.example.cameraxapp
 
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
-import android.renderscript.ScriptGroup
 import android.util.Log
 import android.view.View
 import android.widget.Button
@@ -15,16 +15,20 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.view.PreviewView
+import androidx.core.content.IntentSanitizer
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.bottomsheet.BottomSheetDialog
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
     private val tag = "MainActivity"
-
+    val OCR_RESULT_CODE: Int = 666
     // UI components
     private lateinit var previewView: PreviewView
     private lateinit var roiOverlay: ROIOverlay
@@ -32,12 +36,18 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
     private lateinit var flashButton: ImageButton
     private lateinit var switchButton: ImageButton
     private lateinit var zoomSeekBar: SeekBar
+    private lateinit var exposureSeekBar: SeekBar
     private lateinit var progressBar: ProgressBar
     private lateinit var resultLayout: LinearLayout
     private lateinit var resultImageView: ImageView
     private lateinit var readingTextView: TextView
 
     private lateinit var titleTextView: TextView
+    private lateinit var serviceIdTextView: TextView
+    private lateinit var valueTypeTextView: TextView
+    private lateinit var resultServiceIdTextView: TextView
+    private lateinit var resultValueTypeTextView: TextView
+
     private lateinit var saveButton: Button
     private lateinit var retakeButton: Button
     private lateinit var processButton: Button
@@ -52,31 +62,32 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
     private var currentMeterReading: String? = null
     private val inputNumber = StringBuilder()
 
-    private lateinit var intentDataHandler: IntentDataHandler
-
     var tapCount = 0
     var editFlag = false
     var serviceId = "default_service"
     var valType = "default"
     var savedFileName="default"
+    var imagePath="paht_not_found"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-
         // Create an instance with your intent
         val dataHandler = IntentDataHandler(intent)
 
-
         serviceId = dataHandler.getServiceId()
         valType = dataHandler.getValType()
-
-        savedFileName=serviceId+"_"+valType
-
+        savedFileName = serviceId + "_" + valType
 
         // Initialize UI components
         initializeViews()
+
+        // Update UI with service ID and value type
+        serviceIdTextView.text = serviceId
+        valueTypeTextView.text = valType
+        resultServiceIdTextView.text = serviceId
+        resultValueTypeTextView.text = valType
 
         // Initialize permission manager
         permissionManager = PermissionManager(this, this)
@@ -86,9 +97,6 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
 
         // Request permissions
         permissionManager.requestPermissions()
-
-
-
     }
 
     private fun getVersionName(): String {
@@ -113,16 +121,23 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
         flashButton = findViewById(R.id.flashButton)
         switchButton = findViewById(R.id.switchButton)
         zoomSeekBar = findViewById(R.id.zoomSeekBar)
+        exposureSeekBar = findViewById(R.id.exposureSeekBar)
         progressBar = findViewById(R.id.progressBar)
+
+        // Service ID and Value Type displays
+        serviceIdTextView = findViewById(R.id.serviceIdTextView)
+        valueTypeTextView = findViewById(R.id.valueTypeTextView)
 
         // Result view components
         resultLayout = findViewById(R.id.resultLayout)
         resultImageView = findViewById(R.id.resultImageView)
         readingTextView = findViewById(R.id.readingTextView)
+        resultServiceIdTextView = findViewById(R.id.resultServiceIdTextView)
+        resultValueTypeTextView = findViewById(R.id.resultValueTypeTextView)
         saveButton = findViewById(R.id.saveButton)
         retakeButton = findViewById(R.id.retakeButton)
         processButton = findViewById(R.id.processButton)
-        titleTextView=findViewById(R.id.titleTextView)
+        titleTextView = findViewById(R.id.titleTextView)
 
         // Set up button click listeners
         captureButton.setOnClickListener {
@@ -137,17 +152,24 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
             switchCamera()
         }
 
+
         saveButton.setOnClickListener {
             saveCurrentImage()
+            // Create JSON object with metadata
+            val metadata = JSONObject().apply {
+                put("meterReading", currentMeterReading ?: "")
+                put("filename", imagePath)
+                put("isEdited", editFlag)
+                // Any other metadata fields you want to include
+            }
+            setResult(OCR_RESULT_CODE, intent)
+            intent.putExtra("metadata", metadata.toString())
+            finish()
         }
+
         readingTextView.setOnClickListener {
-
-            if ( readingTextView.text.toString() == "No meter detected") {
+            if (readingTextView.text.toString() == "No meter detected") {
                 editFlag = true
-
-
-            } else {
-                // editFlag =false
             }
 
             tapCount = tapCount + 1
@@ -155,18 +177,12 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
                 showNumericBottomDialog()
                 tapCount = 0
             } else {
-
                 readingTextView.text = buildString {
                     append("Tap: ")
                     append(3 - tapCount)
                     append(" times")
                 }
             }
-
-
-
-
-            //showNumericBottomDialog()
         }
 
         retakeButton.setOnClickListener {
@@ -174,7 +190,6 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
         }
 
         processButton.setOnClickListener {
-
             processCurrentImage()
         }
 
@@ -192,10 +207,23 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
             override fun onStopTrackingTouch(seekBar: SeekBar?) {}
         })
 
-        titleTextView.text= buildString {
-            append("Ebilly OCR")
+        // Set up exposure seekbar
+        exposureSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (fromUser && ::cameraManager.isInitialized) {
+                   // cameraManager.setExposure(progress)
+                }
+            }
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        })
+
+        titleTextView.text = buildString {
+            append("Ebilly OCR ")
             append(getVersionName())
-        };
+        }
     }
 
     /**
@@ -219,6 +247,12 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
 
         // Start camera
         cameraManager.initialize()
+
+        // Set initial exposure (middle value)
+        if (::cameraManager.isInitialized) {
+            exposureSeekBar.progress = 50
+           // cameraManager.setExposure(50)
+        }
     }
 
     /**
@@ -268,6 +302,10 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
         flashButton.visibility = View.VISIBLE
         switchButton.visibility = View.VISIBLE
         zoomSeekBar.visibility = View.VISIBLE
+        exposureSeekBar.visibility = View.VISIBLE
+
+//        findViewById(R.id.exposureLabel).visibility = View.VISIBLE
+//        findViewById(R.id.infoPanel).visibility = View.VISIBLE
 
         // Clean up previous bitmaps to prevent memory leaks
         currentCaptureResult?.let {
@@ -282,6 +320,7 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
         currentCaptureResult = null
         currentMeterReading = null
     }
+
     private fun showNumericBottomDialog() {
         // Inflate the custom layout
         val inflater = layoutInflater
@@ -295,7 +334,6 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
         // Set up display TextView to show entered numbers
         val displayText = dialogView.findViewById<TextView>(R.id.txtTitle)
         inputNumber.clear()
-
 
         // Numeric buttons logic
         val numberButtonListener = View.OnClickListener { view ->
@@ -326,10 +364,9 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
 
         // Enter button logic
         dialogView.findViewById<Button>(R.id.button_enter).setOnClickListener {
-            readingTextView.text=inputNumber.toString()
-            //binding.resultsTextbox.text = inputNumber.toString()
-            //txtResult.text = inputNumber.toString()
-            // Process the entered value
+            readingTextView.text = inputNumber.toString()
+            currentMeterReading = inputNumber.toString()
+            editFlag = true
             bottomSheetDialog.dismiss()
         }
     }
@@ -351,10 +388,17 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
         flashButton.visibility = View.GONE
         switchButton.visibility = View.GONE
         zoomSeekBar.visibility = View.GONE
+        exposureSeekBar.visibility = View.GONE
+//        findViewById(R.id.exposureLabel).visibility = View.GONE
+//        findViewById(R.id.infoPanel).visibility = View.GONE
 
         // Clear previous reading
         readingTextView.text = "Tap 'Process'"
         currentMeterReading = null
+
+        // Make sure service ID and value type are displayed in the result view
+        resultServiceIdTextView.text = serviceId
+        resultValueTypeTextView.text = valType
     }
 
     /**
@@ -415,7 +459,8 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
         lifecycleScope.launch {
             try {
                 Log.d(tag, "Current Reading: $currentMeterReading")
-                cameraManager.saveImage(result, currentMeterReading, savedFileName, editFlag)
+                imagePath=cameraManager.saveImage(result, currentMeterReading, savedFileName, editFlag).toString()
+                Log.d(tag, "Image saved at: $imagePath")
                 showCameraView()
             } catch (e: Exception) {
                 Log.e(tag, "Failed to save: ${e.message}", e)

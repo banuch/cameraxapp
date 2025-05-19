@@ -3,10 +3,15 @@ package com.example.cameraxapp
 import android.R
 import android.annotation.SuppressLint
 import android.content.Context
+import android.database.Cursor
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.RectF
+import android.net.Uri
+import android.os.Environment
+import android.provider.DocumentsContract
+import android.provider.MediaStore
 import android.util.Log
 import android.view.ScaleGestureDetector
 import android.widget.Toast
@@ -299,13 +304,111 @@ class CameraManager(
     /**
      * Save the captured image and metadata
      */
+//    fun saveImage(
+//        result: CaptureResult,
+//        meterReading: String? = null,
+//        savedFilename: String? = null,
+//        isEdited: Boolean = false
+//    ) {
+//        try {
+//            Log.d(tag, "Saving Image...................")
+//            // Convert bitmap to JPEG bytes
+//            val outputStream = ByteArrayOutputStream()
+//            result.modelBitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream)
+//            val jpegBytes = outputStream.toByteArray()
+//
+//            // Generate image file name
+//            val fileName = "${savedFilename}.jpg"
+//
+//            // Save to storage
+//            val (uri, stream) = FileUtils.createOrUpdateImageFile(
+//                context,
+//                fileName,
+//                "npdcl",
+//                "image/jpeg"
+//            )
+//
+//            Log.d(tag, "image URL: $uri")
+//
+//
+//            if (uri != null && stream != null) {
+//                // Write JPEG data to file
+//                stream.write(jpegBytes)
+//                stream.close()
+//
+//                // Save metadata with isEdited flag
+//                val fileManager = FileManager(context)
+//
+//                fileManager.saveJsonMetadata(uri, result.timestamp, meterReading, savedFilename, isEdited)
+//                fileManager.notifyGallery(uri)
+//
+//                Toast.makeText(context, "Image saved successfully", Toast.LENGTH_SHORT).show()
+//            } else {
+//                Toast.makeText(context, "Failed to create output file", Toast.LENGTH_SHORT).show()
+//            }
+//        } catch (e: Exception) {
+//            Log.e(tag, "Failed to save image: ${e.message}", e)
+//            Toast.makeText(context, "Failed to save image: ${e.message}", Toast.LENGTH_SHORT).show()
+//        }
+//    }
+//    fun saveImage(
+//        result: CaptureResult,
+//        meterReading: String? = null,
+//        savedFilename: String? = null,
+//        isEdited: Boolean = false
+//    ) {
+//        try {
+//            Log.d(tag, "Saving Image...................")
+//            // Convert bitmap to JPEG bytes
+//            val outputStream = ByteArrayOutputStream()
+//            result.modelBitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream)
+//            val jpegBytes = outputStream.toByteArray()
+//
+//            // Generate image file name
+//            val fileName = "${savedFilename}.jpg"
+//
+//            // Save to storage
+//            val (uri, stream) = FileUtils.createOrUpdateImageFile(
+//                context,
+//                fileName,
+//                "npdcl",
+//                "image/jpeg"
+//            )
+//
+//            Log.d(tag, "image URL: $uri")
+//
+//            if (uri != null && stream != null) {
+//                // Write JPEG data to file
+//                stream.write(jpegBytes)
+//                stream.close()
+//
+//                // Get and log the absolute file path
+//                val filePath = getRealPathFromUri(context, uri)
+//                Log.d(tag, "Saved image absolute path: $filePath")
+//
+//                // Save metadata with isEdited flag
+//                val fileManager = FileManager(context)
+//
+//                fileManager.saveJsonMetadata(filePath.toString(), result.timestamp, meterReading, savedFilename, isEdited)
+//                fileManager.notifyGallery(uri)
+//
+//                Toast.makeText(context, "Image saved successfully", Toast.LENGTH_SHORT).show()
+//            } else {
+//                Toast.makeText(context, "Failed to create output file", Toast.LENGTH_SHORT).show()
+//            }
+//        } catch (e: Exception) {
+//            Log.e(tag, "Failed to save image: ${e.message}", e)
+//            Toast.makeText(context, "Failed to save image: ${e.message}", Toast.LENGTH_SHORT).show()
+//        }
+//    }
     fun saveImage(
         result: CaptureResult,
         meterReading: String? = null,
         savedFilename: String? = null,
         isEdited: Boolean = false
-    ) {
+    ): String? {
         try {
+            Log.d(tag, "Saving Image...................")
             // Convert bitmap to JPEG bytes
             val outputStream = ByteArrayOutputStream()
             result.modelBitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream)
@@ -324,19 +427,24 @@ class CameraManager(
 
             Log.d(tag, "image URL: $uri")
 
-
             if (uri != null && stream != null) {
                 // Write JPEG data to file
                 stream.write(jpegBytes)
                 stream.close()
 
+                // Get and log the absolute file path
+                val filePath = getRealPathFromUri(context, uri)
+                Log.d(tag, "Saved image absolute path: $filePath")
+
                 // Save metadata with isEdited flag
                 val fileManager = FileManager(context)
 
-                fileManager.saveJsonMetadata(uri, result.timestamp, meterReading, savedFilename, isEdited)
+                fileManager.saveJsonMetadata(filePath.toString(), result.timestamp, meterReading, savedFilename, isEdited)
                 fileManager.notifyGallery(uri)
 
                 Toast.makeText(context, "Image saved successfully", Toast.LENGTH_SHORT).show()
+
+                return filePath
             } else {
                 Toast.makeText(context, "Failed to create output file", Toast.LENGTH_SHORT).show()
             }
@@ -344,6 +452,79 @@ class CameraManager(
             Log.e(tag, "Failed to save image: ${e.message}", e)
             Toast.makeText(context, "Failed to save image: ${e.message}", Toast.LENGTH_SHORT).show()
         }
+
+        return null
+    }
+
+    // Helper function to get absolute path from URI
+    private fun getRealPathFromUri(context: Context, uri: Uri): String? {
+        // For external storage (MediaStore)
+        if (DocumentsContract.isDocumentUri(context, uri)) {
+            // ExternalStorageProvider
+            if (isExternalStorageDocument(uri)) {
+                val docId = DocumentsContract.getDocumentId(uri)
+                val split = docId.split(":")
+                val type = split[0]
+
+                if ("primary".equals(type, ignoreCase = true)) {
+                    return "${Environment.getExternalStorageDirectory()}/${split[1]}"
+                }
+            }
+            // MediaProvider
+            else if (isMediaDocument(uri)) {
+                val docId = DocumentsContract.getDocumentId(uri)
+                val split = docId.split(":")
+                val contentUri = when (split[0]) {
+                    "image" -> MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+                    "video" -> MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+                    "audio" -> MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+                    else -> null
+                }
+
+                contentUri?.let {
+                    val selection = "_id=?"
+                    val selectionArgs = arrayOf(split[1])
+                    return getDataColumn(context, contentUri, selection, selectionArgs)
+                }
+            }
+        }
+        // MediaStore (and general)
+        else if ("content".equals(uri.scheme, ignoreCase = true)) {
+            return getDataColumn(context, uri, null, null)
+        }
+        // File
+        else if ("file".equals(uri.scheme, ignoreCase = true)) {
+            return uri.path
+        }
+
+        return null
+    }
+
+    private fun getDataColumn(context: Context, uri: Uri, selection: String?, selectionArgs: Array<String>?): String? {
+        var cursor: Cursor? = null
+        val column = "_data"
+        val projection = arrayOf(column)
+
+        try {
+            cursor = context.contentResolver.query(uri, projection, selection, selectionArgs, null)
+            if (cursor != null && cursor.moveToFirst()) {
+                val columnIndex = cursor.getColumnIndexOrThrow(column)
+                return cursor.getString(columnIndex)
+            }
+        } catch (e: Exception) {
+            Log.e(tag, "Error getting real path: ${e.message}", e)
+        } finally {
+            cursor?.close()
+        }
+        return null
+    }
+
+    private fun isExternalStorageDocument(uri: Uri): Boolean {
+        return "com.android.externalstorage.documents" == uri.authority
+    }
+
+    private fun isMediaDocument(uri: Uri): Boolean {
+        return "com.android.providers.media.documents" == uri.authority
     }
 
     /**

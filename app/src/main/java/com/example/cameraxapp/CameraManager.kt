@@ -14,6 +14,7 @@ import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.util.Log
 import android.view.ScaleGestureDetector
+import android.view.Surface
 import android.widget.Toast
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
@@ -105,6 +106,55 @@ class CameraManager(
     /**
      * Bind camera use cases (preview and image capture)
      */
+//    private fun bindCameraUseCases() {
+//        val cameraProvider = cameraProvider ?: return
+//
+//        // Build camera selector
+//        val cameraSelector = CameraSelector.Builder()
+//            .requireLensFacing(lensFacing)
+//            .build()
+//
+//        // Setup preview use case
+//        val preview = Preview.Builder()
+//            .build()
+//            .also {
+//                it.setSurfaceProvider(previewView.surfaceProvider)
+//            }
+//
+//        // Setup image capture use case
+//        imageCapture = ImageCapture.Builder()
+//            .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+//            .build()
+//
+//        try {
+//            // Unbind any existing use cases
+//            cameraProvider.unbindAll()
+//
+//            // Get the display rotation
+//            val rotation = previewView.display.rotation
+//
+//            // Create a use case group with the display's rotation
+//            val useCaseGroup = UseCaseGroup.Builder()
+//                .addUseCase(preview)
+//                .addUseCase(imageCapture!!)
+//                //.setTargetRotation(rotation)
+//                .build()
+//
+//            // Bind the use cases to the camera
+//            camera = cameraProvider.bindToLifecycle(
+//                lifecycleOwner,
+//                cameraSelector,
+//                useCaseGroup
+//            )
+//
+//            // Initial zoom level
+//            camera?.cameraControl?.setLinearZoom(0f)
+//        } catch (e: Exception) {
+//            Log.e(tag, "Use case binding failed: ${e.message}", e)
+//            Toast.makeText(context, "Failed to bind camera: ${e.message}", Toast.LENGTH_SHORT).show()
+//        }
+//    }
+
     private fun bindCameraUseCases() {
         val cameraProvider = cameraProvider ?: return
 
@@ -113,30 +163,40 @@ class CameraManager(
             .requireLensFacing(lensFacing)
             .build()
 
-        // Setup preview use case
+        // Get the display rotation safely
+        val rotation = when {
+            android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R -> {
+                context.display?.rotation ?: Surface.ROTATION_0
+            }
+            else -> {
+                @Suppress("DEPRECATION")
+                val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as android.view.WindowManager
+                windowManager.defaultDisplay.rotation
+            }
+        }
+
+        // Setup preview use case with rotation
         val preview = Preview.Builder()
+            .setTargetRotation(rotation)
             .build()
             .also {
                 it.setSurfaceProvider(previewView.surfaceProvider)
             }
 
-        // Setup image capture use case
+        // Setup image capture use case with rotation
         imageCapture = ImageCapture.Builder()
             .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+            .setTargetRotation(rotation)
             .build()
 
         try {
             // Unbind any existing use cases
             cameraProvider.unbindAll()
 
-            // Get the display rotation
-            val rotation = previewView.display.rotation
-
-            // Create a use case group with the display's rotation
+            // Create a use case group without using setTargetRotation
             val useCaseGroup = UseCaseGroup.Builder()
                 .addUseCase(preview)
                 .addUseCase(imageCapture!!)
-                //.setTargetRotation(rotation)
                 .build()
 
             // Bind the use cases to the camera
@@ -414,8 +474,14 @@ class CameraManager(
             result.modelBitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream)
             val jpegBytes = outputStream.toByteArray()
 
+            val currentTimeMillis = System.currentTimeMillis()
+            val formattedTimestamp = SimpleDateFormat(
+                "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+                Locale.US
+            ).format(currentTimeMillis)
+
             // Generate image file name
-            val fileName = "${savedFilename}.jpg"
+            val fileName = "${savedFilename}_$formattedTimestamp.jpg"
 
             // Save to storage
             val (uri, stream) = FileUtils.createOrUpdateImageFile(
@@ -439,7 +505,7 @@ class CameraManager(
                 // Save metadata with isEdited flag
                 val fileManager = FileManager(context)
 
-                fileManager.saveJsonMetadata(filePath.toString(), result.timestamp, meterReading, savedFilename, isEdited)
+               // fileManager.saveJsonMetadata(filePath.toString(), result.timestamp, meterReading, savedFilename, isEdited)
                 fileManager.notifyGallery(uri)
 
                 Toast.makeText(context, "Image saved successfully", Toast.LENGTH_SHORT).show()

@@ -1,6 +1,4 @@
 package com.example.cameraxapp
-
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
@@ -15,7 +13,6 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.view.PreviewView
-import androidx.core.content.IntentSanitizer
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import kotlinx.coroutines.CoroutineScope
@@ -25,10 +22,11 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import kotlin.random.Random
 
 class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
     private val tag = "MainActivity"
-    val OCR_RESULT_CODE: Int = 666
+
     // UI components
     private lateinit var previewView: PreviewView
     private lateinit var roiOverlay: ROIOverlay
@@ -67,6 +65,7 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
     var serviceId = "default_service"
     var valType = "default"
     var savedFileName="default"
+    var meterReading="null"
     var imagePath="paht_not_found"
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -86,6 +85,10 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
         // Update UI with service ID and value type
         serviceIdTextView.text = serviceId
         valueTypeTextView.text = valType
+
+        Log.d(tag, "ServiceID: $serviceId")
+        Log.d(tag, "ValueType: $valType")
+
         resultServiceIdTextView.text = serviceId
         resultValueTypeTextView.text = valType
 
@@ -155,16 +158,8 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
 
         saveButton.setOnClickListener {
             saveCurrentImage()
-            // Create JSON object with metadata
-            val metadata = JSONObject().apply {
-                put("meterReading", currentMeterReading ?: "")
-                put("filename", imagePath)
-                put("isEdited", editFlag)
-                // Any other metadata fields you want to include
-            }
-            setResult(OCR_RESULT_CODE, intent)
-            intent.putExtra("metadata", metadata.toString())
-            finish()
+            sendBackvalues()
+
         }
 
         readingTextView.setOnClickListener {
@@ -192,6 +187,8 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
         processButton.setOnClickListener {
             processCurrentImage()
         }
+
+
 
         // Set up zoom seekbar
         zoomSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -223,6 +220,64 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
         titleTextView.text = buildString {
             append("Ebilly OCR ")
             append(getVersionName())
+        }
+    }
+
+
+
+    private fun sendBackvalues(){
+        // Create JSON object with metadata
+        val metadata = JSONObject().apply {
+            put("meterReading", meterReading)
+            put("filename", imagePath)
+            put("isEdited", editFlag)
+            // Any other metadata fields you want to include
+        }
+
+        Log.d(tag, "Metadata: $metadata")
+
+        Log.d(tag, "Valtype: $valType")
+
+        // Add value type specific extras and set result code
+        when (valType) {
+            "KWH" -> {
+
+                setResult(OCR_KWH_RESULT_CODE, intent)
+                Log.d(tag, "Result Code Set to : $OCR_KWH_RESULT_CODE")
+            }
+            "KVAH" -> {
+
+                setResult(OCR_KVAH_RESULT_CODE, intent)
+                Log.d(tag, "Result Code Set to : $OCR_KVAH_RESULT_CODE")
+
+            }
+            "RMD" -> {
+
+                setResult(OCR_RMD_RESULT_CODE, intent)
+                Log.d(tag, "Result Code Set to : ${OCR_RMD_RESULT_CODE}")
+
+            }
+            "LT" -> {
+                setResult(OCR_LT_RESULT_CODE, intent)
+                Log.d(tag, "Result Code Set to : ${OCR_LT_RESULT_CODE}")
+            }
+            "IMG" -> {
+                setResult(OCR_IMG_RESULT_CODE, intent)
+                Log.d(tag, "Result Code Set to : ${OCR_IMG_RESULT_CODE}")
+            }
+            else -> {
+                setResult(OCR_INVALID_RESULT_CODE, intent)
+                Log.d(tag, "Result Code Set to : ${OCR_INVALID_RESULT_CODE}")
+            }
+
+        }
+
+        intent.putExtra("metadata", metadata.toString())
+
+        // Launch a coroutine to delay and then finish the task
+        CoroutineScope(Dispatchers.Main).launch {
+            delay(1000) // 2 seconds delay
+            finish()
         }
     }
 
@@ -458,6 +513,7 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
 
         lifecycleScope.launch {
             try {
+                meterReading=  currentMeterReading.toString()
                 Log.d(tag, "Current Reading: $currentMeterReading")
                 imagePath=cameraManager.saveImage(result, currentMeterReading, savedFileName, editFlag).toString()
                 Log.d(tag, "Image saved at: $imagePath")
@@ -506,5 +562,13 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
         if (::meterDetector.isInitialized) {
             meterDetector.close()
         }
+    }
+    companion object {
+        const val OCR_KWH_RESULT_CODE = 666
+        const val OCR_KVAH_RESULT_CODE = 667
+        const val OCR_RMD_RESULT_CODE = 668
+        const val OCR_LT_RESULT_CODE = 669
+        const val OCR_IMG_RESULT_CODE = 770
+        const val OCR_INVALID_RESULT_CODE = 771
     }
 }

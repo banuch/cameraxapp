@@ -1,13 +1,11 @@
 package com.example.cameraxapp
 
-import android.R
 import android.annotation.SuppressLint
 import android.content.Context
 import android.database.Cursor
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
-import android.graphics.RectF
 import android.net.Uri
 import android.os.Environment
 import android.provider.DocumentsContract
@@ -33,8 +31,10 @@ import kotlinx.coroutines.flow.StateFlow
 import java.io.ByteArrayOutputStream
 import java.text.SimpleDateFormat
 import java.util.Locale
+import java.util.TimeZone
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+
 
 /**
  * CameraManager handles all camera operations for meter detection
@@ -271,7 +271,7 @@ class CameraManager(
     /**
      * Capture image and process ROI
      */
-    fun captureImage() {
+    fun captureImage(valType1: String) {
         val imageCapture = imageCapture ?: return
 
         try {
@@ -281,7 +281,12 @@ class CameraManager(
                 object : ImageCapture.OnImageCapturedCallback() {
                     @SuppressLint("UnsafeOptInUsageError")
                     override fun onCaptureSuccess(image: ImageProxy) {
-                        processImage(image)
+
+                        if(valType1!= "IMG")
+                            processImage(image)
+                        else
+                            noImageProcess(image)
+
                     }
 
                     override fun onError(exception: ImageCaptureException) {
@@ -299,6 +304,42 @@ class CameraManager(
     /**
      * Process the captured image to extract ROI
      */
+    private fun noImageProcess(imageProxy: ImageProxy) {
+        try {
+            Log.d(tag, "NO IMAGE PROCESS STARED...")
+            // Get bitmap from image proxy
+            val buffer = imageProxy.planes[0].buffer
+            val bytes = ByteArray(buffer.remaining())
+            buffer.get(bytes)
+
+            // Convert to bitmap
+            var bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+
+            // Apply rotation if needed
+            val rotation = imageProxy.imageInfo.rotationDegrees
+            if (rotation != 0) {
+                bitmap = ImageCropper.rotateBitmap(bitmap, rotation) ?: bitmap
+            }
+            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(System.currentTimeMillis())
+
+            // Create capture result
+            val result = CaptureResult(
+                originalBitmap = bitmap,
+                roiBitmap = bitmap,
+                modelBitmap = bitmap,
+                timestamp = timestamp
+            )
+
+            // Update capture result flow
+            _captureResult.value = result
+
+            // Close the image proxy
+            imageProxy.close()
+        } catch (e: Exception) {
+            Log.e(tag, "Image processing failed: ${e.message}", e)
+            imageProxy.close()
+        }
+    }
     private fun processImage(imageProxy: ImageProxy) {
         try {
             // Get bitmap from image proxy
@@ -475,13 +516,10 @@ class CameraManager(
             val jpegBytes = outputStream.toByteArray()
 
             val currentTimeMillis = System.currentTimeMillis()
-            val formattedTimestamp = SimpleDateFormat(
-                "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
-                Locale.US
-            ).format(currentTimeMillis)
+
 
             // Generate image file name
-            val fileName = "${savedFilename}_$formattedTimestamp.jpg"
+            val fileName = "${savedFilename}_$currentTimeMillis.jpg"
 
             // Save to storage
             val (uri, stream) = FileUtils.createOrUpdateImageFile(

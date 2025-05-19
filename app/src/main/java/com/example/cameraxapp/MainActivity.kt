@@ -1,4 +1,5 @@
 package com.example.cameraxapp
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
@@ -22,7 +23,9 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
-import kotlin.random.Random
+import android.content.ContentResolver
+import android.provider.Settings
+import android.provider.Settings.System
 
 class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
     private val tag = "MainActivity"
@@ -72,6 +75,21 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+
+        // Inside your Activity class
+        val isAutoRotateEnabled = isAutoRotateOn(contentResolver)
+
+
+        if (isAutoRotateEnabled) {
+            // Auto-rotation is on
+            Log.d(tag, "Auto-rotation is enabled")
+        } else {
+            // Auto-rotation is off
+            Log.d(tag, "Auto-rotation is disabled")
+        }
+
         // Create an instance with your intent
         val dataHandler = IntentDataHandler(intent)
 
@@ -100,6 +118,16 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
 
         // Request permissions
         permissionManager.requestPermissions()
+    }
+
+
+    // Method to check if auto-rotation is enabled
+    fun isAutoRotateOn(contentResolver: ContentResolver): Boolean {
+        return Settings.System.getInt(
+            contentResolver,
+            Settings.System.ACCELEROMETER_ROTATION,
+            0
+        ) == 1
     }
 
     private fun getVersionName(): String {
@@ -144,7 +172,7 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
 
         // Set up button click listeners
         captureButton.setOnClickListener {
-            captureImage()
+            captureImage(valType)
         }
 
         flashButton.setOnClickListener {
@@ -251,6 +279,17 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
                 Log.d(tag, "Result Code Set to : $OCR_KVAH_RESULT_CODE")
 
             }
+            "SKWH" -> {
+
+                setResult(OCR_SKWH_RESULT_CODE, intent)
+                Log.d(tag, "Result Code Set to : $OCR_SKWH_RESULT_CODE")
+            }
+            "SKVAH" -> {
+
+                setResult(OCR_SKVAH_RESULT_CODE, intent)
+                Log.d(tag, "Result Code Set to : $OCR_SKVAH_RESULT_CODE")
+
+            }
             "RMD" -> {
 
                 setResult(OCR_RMD_RESULT_CODE, intent)
@@ -313,14 +352,14 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
     /**
      * Capture button click handler
      */
-    private fun captureImage() {
+    private fun captureImage(valType1: String) {
         if (::cameraManager.isInitialized) {
             // Show progress indicator
             progressBar.visibility = View.VISIBLE
             captureButton.isEnabled = false
 
             // Capture image
-            cameraManager.captureImage()
+            cameraManager.captureImage(valType1)
         }
     }
 
@@ -448,7 +487,11 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
 //        findViewById(R.id.infoPanel).visibility = View.GONE
 
         // Clear previous reading
+        if(valType=="IMG")
+            readingTextView.text = "Tap 'Save'"
+        else
         readingTextView.text = "Tap 'Process'"
+
         currentMeterReading = null
 
         // Make sure service ID and value type are displayed in the result view
@@ -569,6 +612,8 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
         const val OCR_RMD_RESULT_CODE = 668
         const val OCR_LT_RESULT_CODE = 669
         const val OCR_IMG_RESULT_CODE = 770
-        const val OCR_INVALID_RESULT_CODE = 771
+        const val OCR_SKWH_RESULT_CODE = 771
+        const val OCR_SKVAH_RESULT_CODE = 772
+        const val OCR_INVALID_RESULT_CODE = 773
     }
 }

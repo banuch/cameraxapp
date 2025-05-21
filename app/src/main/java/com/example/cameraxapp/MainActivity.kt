@@ -26,6 +26,8 @@ import org.json.JSONObject
 import android.content.ContentResolver
 import android.provider.Settings
 import android.provider.Settings.System
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 
 class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
     private val tag = "MainActivity"
@@ -57,6 +59,12 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
     private lateinit var permissionManager: PermissionManager
     private lateinit var cameraManager: CameraManager
     private lateinit var meterDetector: MeterDetector
+
+
+    // Add this to the class variables
+    private lateinit var modelSelectButton: ImageButton
+    private var currentModelInfo: MeterDetector.ModelInfo? = null
+
 
     // State variables
     private var currentCaptureResult: CameraManager.CaptureResult? = null
@@ -150,10 +158,15 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
         roiOverlay = findViewById(R.id.roiOverlay)
         captureButton = findViewById(R.id.captureButton)
         flashButton = findViewById(R.id.flashButton)
-        switchButton = findViewById(R.id.switchButton)
+        switchButton = findViewById(R.id.modelSelectButton)
         zoomSeekBar = findViewById(R.id.zoomSeekBar)
         exposureSeekBar = findViewById(R.id.exposureSeekBar)
         progressBar = findViewById(R.id.progressBar)
+
+
+        // Add this to initializeViews() method
+        modelSelectButton = findViewById(R.id.modelSelectButton)
+
 
         // Service ID and Value Type displays
         serviceIdTextView = findViewById(R.id.serviceIdTextView)
@@ -188,6 +201,10 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
             saveCurrentImage()
             sendBackvalues()
 
+        }
+
+        modelSelectButton.setOnClickListener {
+            showModelSelectionDialog()
         }
 
         readingTextView.setOnClickListener {
@@ -250,7 +267,37 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
             append(getVersionName())
         }
     }
+    // Add this new method to show the model selection dialog
+    private fun showModelSelectionDialog() {
+        val bottomSheetDialog = BottomSheetDialog(this)
+        val view = layoutInflater.inflate(R.layout.model_selection_bottom_sheet, null)
+        bottomSheetDialog.setContentView(view)
 
+        val recyclerView = view.findViewById<RecyclerView>(R.id.modelRecyclerView)
+        recyclerView.layoutManager = LinearLayoutManager(this)
+
+        val availableModels = meterDetector.getAvailableModels()
+        currentModelInfo = meterDetector.getCurrentModel()
+
+        val adapter = ModelSelectionAdapter(
+            models = availableModels,
+            currentModelFileName = currentModelInfo?.fileName ?: "",
+            onModelSelected = { selectedModel ->
+                // Load the selected model
+                val success = meterDetector.loadModel(selectedModel)
+                if (success) {
+                    currentModelInfo = selectedModel
+                    Toast.makeText(this, "Model '${selectedModel.displayName}' loaded", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "Failed to load model", Toast.LENGTH_SHORT).show()
+                }
+                bottomSheetDialog.dismiss()
+            }
+        )
+
+        recyclerView.adapter = adapter
+        bottomSheetDialog.show()
+    }
 
 
     private fun sendBackvalues(){

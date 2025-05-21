@@ -314,6 +314,7 @@ class MeterDetector(private val context: Context) {
     private fun loadModelFile(): MappedByteBuffer {
         val assetManager = context.assets
         val modelPath = "weights.tflite" // Make sure this matches your file name
+
         val fileDescriptor = assetManager.openFd(modelPath)
         val inputStream = FileInputStream(fileDescriptor.fileDescriptor)
         val fileChannel = inputStream.channel

@@ -24,10 +24,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import android.content.ContentResolver
+import android.content.Context
 import android.provider.Settings
 import android.provider.Settings.System
+import androidx.appcompat.widget.SwitchCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.core.content.edit
 
 class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
     private val tag = "MainActivity"
@@ -37,7 +40,7 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
     private lateinit var roiOverlay: ROIOverlay
     private lateinit var captureButton: Button
     private lateinit var flashButton: ImageButton
-    private lateinit var switchButton: ImageButton
+
     private lateinit var zoomSeekBar: SeekBar
     private lateinit var exposureSeekBar: SeekBar
     private lateinit var progressBar: ProgressBar
@@ -60,11 +63,13 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
     private lateinit var cameraManager: CameraManager
     private lateinit var meterDetector: MeterDetector
 
-
+    // Add this as a class variable
+    private lateinit var currentModelTextView: TextView
     // Add this to the class variables
     private lateinit var modelSelectButton: ImageButton
     private var currentModelInfo: MeterDetector.ModelInfo? = null
 
+    private var visualizeDetections = false
 
     // State variables
     private var currentCaptureResult: CameraManager.CaptureResult? = null
@@ -158,11 +163,9 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
         roiOverlay = findViewById(R.id.roiOverlay)
         captureButton = findViewById(R.id.captureButton)
         flashButton = findViewById(R.id.flashButton)
-        switchButton = findViewById(R.id.modelSelectButton)
         zoomSeekBar = findViewById(R.id.zoomSeekBar)
         exposureSeekBar = findViewById(R.id.exposureSeekBar)
         progressBar = findViewById(R.id.progressBar)
-
 
         // Add this to initializeViews() method
         modelSelectButton = findViewById(R.id.modelSelectButton)
@@ -183,6 +186,9 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
         processButton = findViewById(R.id.processButton)
         titleTextView = findViewById(R.id.titleTextView)
 
+
+        currentModelTextView = findViewById(R.id.currentModelTextView)
+
         // Set up button click listeners
         captureButton.setOnClickListener {
             captureImage(valType)
@@ -192,9 +198,6 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
             toggleFlash()
         }
 
-        switchButton.setOnClickListener {
-            switchCamera()
-        }
 
 
         saveButton.setOnClickListener {
@@ -206,6 +209,10 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
         modelSelectButton.setOnClickListener {
             showModelSelectionDialog()
         }
+
+
+            // Update the detection info visibility
+
 
         readingTextView.setOnClickListener {
             if (readingTextView.text.toString() == "No meter detected") {
@@ -267,6 +274,12 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
             append(getVersionName())
         }
     }
+
+    // Update the UI after loading a model
+    private fun updateModelDisplay() {
+        currentModelInfo = meterDetector.getCurrentModel()
+        currentModelTextView.text = "Model: ${currentModelInfo?.displayName ?: "None"}"
+    }
     // Add this new method to show the model selection dialog
     private fun showModelSelectionDialog() {
         val bottomSheetDialog = BottomSheetDialog(this)
@@ -287,6 +300,7 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
                 val success = meterDetector.loadModel(selectedModel)
                 if (success) {
                     currentModelInfo = selectedModel
+                    updateModelDisplay()
                     Toast.makeText(this, "Model '${selectedModel.displayName}' loaded", Toast.LENGTH_SHORT).show()
                 } else {
                     Toast.makeText(this, "Failed to load model", Toast.LENGTH_SHORT).show()
@@ -441,7 +455,7 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
         roiOverlay.visibility = View.VISIBLE
         captureButton.visibility = View.VISIBLE
         flashButton.visibility = View.VISIBLE
-        switchButton.visibility = View.VISIBLE
+
         zoomSeekBar.visibility = View.VISIBLE
         exposureSeekBar.visibility = View.VISIBLE
 
@@ -527,7 +541,7 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
         roiOverlay.visibility = View.GONE
         captureButton.visibility = View.GONE
         flashButton.visibility = View.GONE
-        switchButton.visibility = View.GONE
+
         zoomSeekBar.visibility = View.GONE
         exposureSeekBar.visibility = View.GONE
 //        findViewById(R.id.exposureLabel).visibility = View.GONE
@@ -536,8 +550,9 @@ class MainActivity : AppCompatActivity(), PermissionManager.PermissionListener {
         // Clear previous reading
         if(valType=="IMG")
             readingTextView.text = "Tap 'Save'"
-        else
-        readingTextView.text = "Tap 'Process'"
+        else {
+            readingTextView.text = "Tap 'Process'"
+        }
 
         currentMeterReading = null
 

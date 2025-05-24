@@ -17,6 +17,7 @@ class ModelSelectionAdapter(
         val radioButton: RadioButton = view.findViewById(R.id.radioButton)
         val modelName: TextView = view.findViewById(R.id.modelNameTextView)
         val modelDescription: TextView = view.findViewById(R.id.modelDescriptionTextView)
+        val versionText: TextView = view.findViewById(R.id.versionTextView)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -30,6 +31,7 @@ class ModelSelectionAdapter(
 
         holder.modelName.text = model.displayName
         holder.modelDescription.text = model.description
+        holder.versionText.text = "v${model.version}"
         holder.radioButton.isChecked = model.fileName == currentModelFileName
 
         // Handle click on the whole item

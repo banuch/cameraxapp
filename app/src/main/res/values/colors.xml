@@ -41,4 +41,16 @@
     <color name="secondary">#4CAF50</color>
     <color name="red">#F44336</color>
 
+    <color name="md_theme_primary">#FF0000</color> <color name="md_theme_onPrimary">#FFFFFF</color>
+    <color name="md_theme_primaryContainer">#FFC0CB</color> <color name="md_theme_onPrimaryContainer">#000000</color>
+
+    <color name="md_theme_secondary">#008000</color> <color name="md_theme_onSecondary">#FFFFFF</color>
+    <color name="md_theme_secondaryContainer">#C8E6C9</color> <color name="md_theme_onSecondaryContainer">#000000</color>
+
+    <color name="md_theme_accent">#FFA500</color> <color name="md_theme_onAccent">#FFFFFF</color>
+
+    <color name="md_theme_surface">#FFFFFF</color>
+    <color name="md_theme_onSurface">#000000</color>
+    <color name="md_theme_outline">#757575</color>
+
 </resources>

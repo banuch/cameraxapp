@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@color/card_background">
+
+    <!-- Peek Container - Always visible -->
+    <LinearLayout
+        android:id="@+id/peekContainer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="16dp"
+        android:gravity="center_vertical">
+
+        <!-- Handle -->
+        <View
+            android:layout_width="40dp"
+            android:layout_height="4dp"
+            android:layout_gravity="center_horizontal"
+            android:background="#CCCCCC" />
+
+        <!-- Quick Controls -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Z:"
+            android:layout_marginStart="16dp"/>
+
+        <SeekBar
+            android:id="@+id/quickZoomSeekBar"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_margin="8dp" />
+
+        <TextView
+            android:id="@+id/quickZoomValue"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="0%" />
+    </LinearLayout>
+
+    <!-- Full Container - Visible when expanded -->
+    <LinearLayout
+        android:id="@+id/fullContainer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <!-- Your existing control layouts here -->
+
+    </LinearLayout>
+</LinearLayout>

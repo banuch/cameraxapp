@@ -57,7 +57,7 @@ class MeterDetector(private val context: Context) {
      */
     private val inputSize = 640
     private val numClasses = 12
-    private val scoreThreshold = 0.5f
+    private var scoreThreshold = 0.5f
     private val iouThreshold = 0.45f
     private val classNames = arrayOf(".", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "kwh")
 
@@ -75,6 +75,8 @@ class MeterDetector(private val context: Context) {
         val description: String = "",
         val version: String = "1.0"
     )
+
+
 
     init {
         // Scan assets directory for available models
@@ -183,6 +185,16 @@ class MeterDetector(private val context: Context) {
     fun getConfidenceThreshold(): Float {
         return scoreThreshold
     }
+
+    /**
+     * Set the confidence threshold for detection filtering
+     * @param threshold Value between 0.0 and 1.0
+     */
+    fun setConfidenceThreshold(threshold: Float) {
+        scoreThreshold = threshold.coerceIn(0.0f, 1.0f)
+        Log.d(tag, "Confidence threshold set to: $scoreThreshold")
+    }
+
 
     /**
      * Load a specific model by ModelInfo

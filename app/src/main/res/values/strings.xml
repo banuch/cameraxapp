@@ -35,4 +35,23 @@
     <string name="retake_button_text">Retake</string>
     <string name="process_button_text">Process</string>
     <string name="save_button_text">Save</string>
+    <string name="toggle_camera_settings">Toggle Camera Settings</string>
+
+
+    <!-- ... your existing strings ... -->
+
+    <!-- Settings Dialog Strings -->
+    <string name="camera_settings">Camera Settings</string>
+    <string name="detection_confidence">Detection Confidence</string>
+    <string name="reset">Reset</string>
+    <string name="done">Done</string>
+
+
+    <!-- Content Descriptions -->
+    <string name="settings_icon">Settings</string>
+    <string name="tune_icon">Tune</string>
+    <string name="brightness_icon">Brightness</string>
+
+    <!-- Help Text -->
+    <string name="confidence_help">Lower values detect more digits, higher values reduce false detections</string>
 </resources>

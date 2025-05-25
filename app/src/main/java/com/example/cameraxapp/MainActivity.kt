@@ -134,6 +134,8 @@ class MainActivity : AppCompatActivity(),
 
         // Request permissions
         permissionManager.requestPermissions()
+
+        //showSettingsDialog()
     }
 
     override fun onDestroy() {

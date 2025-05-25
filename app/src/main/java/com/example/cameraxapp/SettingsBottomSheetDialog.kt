@@ -46,7 +46,7 @@ class SettingsBottomSheetDialog : BottomSheetDialogFragment() {
     private lateinit var zoomValueText: TextView
     private lateinit var thresholdValueText: TextView
     private lateinit var exposureValueText: TextView
-
+    private lateinit var buttonClose: Button
 
     // Current values
     private var currentZoom = 0
@@ -75,14 +75,21 @@ class SettingsBottomSheetDialog : BottomSheetDialogFragment() {
 
         initViews(view)
         setupSeekBars()
-//        setupButtons()
+        setupButtons()
         updateCurrentValues()
+    }
+    private fun  setupButtons() {
+        buttonClose.setOnClickListener {
+            dismiss()
+        }
     }
 
     private fun initViews(view: View) {
         zoomSeekBar = view.findViewById(R.id.zoomSeekBar)
         thresholdSeekBar = view.findViewById(R.id.thresholdSeekBar)
         exposureSeekBar = view.findViewById(R.id.exposureSeekBar)
+        buttonClose=view.findViewById(R.id.closeButton)
+
 //
 //        zoomValueText = view.findViewById(R.id.zoomValueText)
 //        thresholdValueText = view.findViewById(R.id.thresholdValueText)
@@ -91,6 +98,8 @@ class SettingsBottomSheetDialog : BottomSheetDialogFragment() {
 //        resetButton = view.findViewById(R.id.resetButton)
 //        closeButton = view.findViewById(R.id.closeButton)
     }
+
+
 
     private fun setupSeekBars() {
         // Zoom SeekBar

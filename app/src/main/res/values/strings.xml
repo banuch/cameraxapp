@@ -54,4 +54,5 @@
 
     <!-- Help Text -->
     <string name="confidence_help">Lower values detect more digits, higher values reduce false detections</string>
+    <string name="close">Close</string>
 </resources>

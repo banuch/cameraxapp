@@ -93,7 +93,7 @@ class MainActivity : AppCompatActivity(),
     private var currentZoom = 0
     private var currentThreshold = 50
     private var currentExposure = 0
-
+    private var visualizeDetections = false
     // Settings dialog
     private var settingsDialog: SettingsBottomSheetDialog? = null
 
@@ -345,14 +345,21 @@ class MainActivity : AppCompatActivity(),
         currentModelInfo = meterDetector.getCurrentModel()
         currentModelTextView.text = currentModelInfo?.displayName ?: "Default"
     }
-
     private fun showModelSelectionDialog() {
         val bottomSheetDialog = BottomSheetDialog(this)
         val view = layoutInflater.inflate(R.layout.model_selection_bottom_sheet, null)
         bottomSheetDialog.setContentView(view)
 
         val recyclerView = view.findViewById<RecyclerView>(R.id.modelRecyclerView)
+        val visualizeToggle = view.findViewById<androidx.appcompat.widget.SwitchCompat>(R.id.visualizeToggle)
+
         recyclerView.layoutManager = LinearLayoutManager(this)
+
+        // Set current state and handle changes
+        visualizeToggle.isChecked = visualizeDetections
+        visualizeToggle.setOnCheckedChangeListener { _, isChecked ->
+            visualizeDetections = isChecked
+        }
 
         val availableModels = meterDetector.getAvailableModels()
         currentModelInfo = meterDetector.getCurrentModel()
@@ -368,6 +375,29 @@ class MainActivity : AppCompatActivity(),
         recyclerView.adapter = adapter
         bottomSheetDialog.show()
     }
+
+//    private fun showModelSelectionDialog() {
+//        val bottomSheetDialog = BottomSheetDialog(this)
+//        val view = layoutInflater.inflate(R.layout.model_selection_bottom_sheet, null)
+//        bottomSheetDialog.setContentView(view)
+//
+//        val recyclerView = view.findViewById<RecyclerView>(R.id.modelRecyclerView)
+//        recyclerView.layoutManager = LinearLayoutManager(this)
+//
+//        val availableModels = meterDetector.getAvailableModels()
+//        currentModelInfo = meterDetector.getCurrentModel()
+//
+//        val adapter = ModelSelectionAdapter(
+//            models = availableModels,
+//            currentModelFileName = currentModelInfo?.fileName ?: "",
+//            onModelSelected = { selectedModel ->
+//                loadSelectedModel(selectedModel, bottomSheetDialog)
+//            }
+//        )
+//
+//        recyclerView.adapter = adapter
+//        bottomSheetDialog.show()
+//    }
 
     private fun loadSelectedModel(selectedModel: MeterDetector.ModelInfo, dialog: BottomSheetDialog) {
         val success = meterDetector.loadModel(selectedModel)
@@ -439,7 +469,11 @@ class MainActivity : AppCompatActivity(),
         lifecycleScope.launch {
             try {
                 val processingResult = withContext(Dispatchers.IO) {
-                    val (detections, resultBitmap) = meterDetector.detectMeterReading(result.modelBitmap)
+                    // Use the visualization flag here
+                    val (detections, resultBitmap) = meterDetector.detectMeterReading(
+                        result.modelBitmap,
+                        visualize = visualizeDetections  // This is the key change
+                    )
                     val reading = meterDetector.extractMeterReading(detections)
                     Pair(reading, resultBitmap)
                 }
@@ -462,6 +496,40 @@ class MainActivity : AppCompatActivity(),
             }
         }
     }
+
+//    private fun processCurrentImage() {
+//        val result = currentCaptureResult ?: return
+//
+//        readingTextView.text = "Processing..."
+//        progressBar.visibility = View.VISIBLE
+//        processButton.isEnabled = false
+//
+//        lifecycleScope.launch {
+//            try {
+//                val processingResult = withContext(Dispatchers.IO) {
+//                    val (detections, resultBitmap) = meterDetector.detectMeterReading(result.modelBitmap)
+//                    val reading = meterDetector.extractMeterReading(detections)
+//                    Pair(reading, resultBitmap)
+//                }
+//
+//                val (reading, resultBitmap) = processingResult
+//                currentMeterReading = reading
+//
+//                resultImageView.setImageBitmap(resultBitmap)
+//                readingTextView.text = if (reading.isNullOrEmpty()) {
+//                    "No meter detected"
+//                } else {
+//                    reading
+//                }
+//            } catch (e: Exception) {
+//                Log.e(TAG, "Processing failed: ${e.message}", e)
+//                readingTextView.text = "Processing failed: ${e.message}"
+//            } finally {
+//                progressBar.visibility = View.GONE
+//                processButton.isEnabled = true
+//            }
+//        }
+//    }
 
     private fun saveCurrentImage() {
         val result = currentCaptureResult ?: return
